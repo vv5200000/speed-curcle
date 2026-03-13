@@ -377,8 +377,13 @@ export class SinglePlayerGame {
     if (!player) return { ok: false, error: '玩家不存在' };
     if (this.phase !== 'playing') return { ok: false, error: '游戏未进行' };
 
+    if (player.actionPoints <= 0) return { ok: false, error: '行动点不足' };
+
     const cardIdx = player.hand.findIndex(c => c.id === cardId);
     if (cardIdx === -1) return { ok: false, error: '手牌中没有该卡牌' };
+
+    // 扣除行动点
+    player.actionPoints -= 1;
 
     const card = player.hand.splice(cardIdx, 1)[0];
     let effect: any = { type: card.type, value: card.value, actorId: playerId };
@@ -388,9 +393,10 @@ export class SinglePlayerGame {
         const moveResult = this._movePlayer(playerId, card.value);
         if (!moveResult.ok) {
           player.hand.push(card);
+          player.actionPoints += 1; // 失败退还打牌消耗
           return { ok: false, error: moveResult.error };
         }
-        player.actionPoints += 1; // 补回
+        player.actionPoints += 1; // 补回因为 _movePlayer 内部扣除的行动点，保证该卡牌整体只消耗刚才打牌的 1 点
         effect = { ...effect, ...moveResult };
         break;
       }
@@ -408,6 +414,7 @@ export class SinglePlayerGame {
         const target = this.players.find(p => p.id === targetId);
         if (!target) {
           player.hand.push(card);
+          player.actionPoints += 1; // 失败退还
           return { ok: false, error: '目标玩家不存在' };
         }
         if (target.shielded) {
