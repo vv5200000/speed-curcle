@@ -5,17 +5,22 @@
 
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
+import { useSinglePlayer } from '../hooks/useSinglePlayer';
 import { PLAYER_COLORS } from '../types/game';
 
 const PlayerStatus: React.FC = () => {
   const { players, mySocketId, currentPlayerId, totalLaps } = useGameStore();
+  const { isSinglePlayer } = useSinglePlayer();
+
+  // 单机模式下，人类玩家 ID 是 'player'
+  const myId = isSinglePlayer ? 'player' : mySocketId;
 
   return (
     <div className="flex flex-col gap-2 w-full">
       <h3 className="text-xs text-gray-500 uppercase tracking-widest mb-1">玩家状态</h3>
 
       {players.map((player) => {
-        const isMe      = player.id === mySocketId;
+        const isMe      = player.id === myId;
         const isCurrent = player.id === currentPlayerId;
         const colors    = PLAYER_COLORS[player.colorIdx] ?? PLAYER_COLORS[0];
 

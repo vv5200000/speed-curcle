@@ -1,11 +1,12 @@
 /**
  * components/Lobby.tsx
- * 大厅界面：创建房间、加入房间、玩家列表、准备按钮
+ * 大厅界面：创建房间、加入房间、单人模式、玩家列表
  */
 
 import React, { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useSocket } from '../hooks/useSocket';
+import { useSinglePlayer } from '../hooks/useSinglePlayer';
 
 // 每个玩家颜色索引对应的颜色展示
 const COLOR_MAP: Record<number, string> = {
@@ -17,6 +18,7 @@ const COLOR_MAP: Record<number, string> = {
 
 const Lobby: React.FC = () => {
   const { createRoom, joinRoom, setReady, startGame } = useSocket();
+  const { startSinglePlayer, isSinglePlayer, aiCount, setAiCount } = useSinglePlayer();
 
   const {
     connected,
@@ -69,6 +71,14 @@ const Lobby: React.FC = () => {
     if (!res.ok) setErrMsg(res.error ?? '加入失败');
   };
 
+  // ── 开始单人模式 ──
+  const handleStartSinglePlayer = () => {
+    if (!inputName.trim()) return setErrMsg('请输入昵称');
+    setErrMsg('');
+    useGameStore.getState().setMyName(inputName.trim());
+    startSinglePlayer(inputName.trim(), aiCount);
+  };
+
   // ── 准备 / 取消准备 ──
   const handleReady = () => {
     const next = !isReady;
@@ -95,7 +105,7 @@ const Lobby: React.FC = () => {
       <h1 className="text-4xl font-extrabold tracking-widest text-cyan-400 mb-2 drop-shadow-[0_0_12px_#06b6d4]">
         NEON DISTRICT RACING
       </h1>
-      <p className="text-gray-500 text-sm mb-8">格子 × 卡牌 多人赛车</p>
+      <p className="text-gray-500 text-sm mb-8">格子 × 卡牌 赛车游戏</p>
 
       {/* 连接状态 */}
       <div className="mb-4 flex items-center gap-2">
@@ -108,7 +118,7 @@ const Lobby: React.FC = () => {
       </div>
 
       {/* 未加入房间：显示表单 */}
-      {!roomId ? (
+      {!roomId && !isSinglePlayer ? (
         <div className="w-full max-w-md bg-gray-900 border border-cyan-900 rounded-2xl p-6 space-y-4 shadow-xl">
           {/* 昵称 */}
           <div>
@@ -119,6 +129,39 @@ const Lobby: React.FC = () => {
               value={inputName}
               onChange={(e) => setInputName(e.target.value)}
             />
+          </div>
+
+          {/* 单人模式 */}
+          <div className="border-t border-gray-800 pt-4">
+            <label className="block text-xs text-gray-400 mb-2">🤖 单人模式（与 AI 对战）</label>
+            <div className="flex gap-2 mb-2">
+              {[1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setAiCount(n)}
+                  className={`flex-1 py-1 rounded-lg text-sm font-medium transition ${
+                    aiCount === n
+                      ? 'bg-cyan-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  }`}
+                >
+                  {n} 个 AI
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={handleStartSinglePlayer}
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-2 rounded-lg transition"
+            >
+              🎮 开始单人模式
+            </button>
+          </div>
+
+          {/* 分割线 */}
+          <div className="border-t border-gray-800 pt-4 relative">
+            <div className="absolute inset-x-0 -top-2 flex justify-center">
+              <span className="bg-gray-900 px-2 text-xs text-gray-600">或</span>
+            </div>
           </div>
 
           {/* 创建房间 */}
@@ -160,6 +203,9 @@ const Lobby: React.FC = () => {
 
           {errMsg && <p className="text-red-400 text-xs text-center">{errMsg}</p>}
         </div>
+      ) : isSinglePlayer ? (
+        /* 单人模式游戏进行中 - 由 GameBoard 接管 */
+        null
       ) : (
         /* 已在房间：显示玩家列表 */
         <div className="w-full max-w-md space-y-4">
@@ -246,17 +292,19 @@ const Lobby: React.FC = () => {
       )}
 
       {/* 消息日志 */}
-      <div className="mt-6 w-full max-w-md bg-gray-900 border border-gray-800 rounded-xl p-3 max-h-32 overflow-y-auto">
-        {messages.length === 0 ? (
-          <p className="text-gray-600 text-xs text-center">暂无消息</p>
-        ) : (
-          messages.slice(-8).map((m, i) => (
-            <p key={i} className="text-xs text-gray-400 leading-relaxed">
-              {m}
-            </p>
-          ))
-        )}
-      </div>
+      {!isSinglePlayer && (
+        <div className="mt-6 w-full max-w-md bg-gray-900 border border-gray-800 rounded-xl p-3 max-h-32 overflow-y-auto">
+          {messages.length === 0 ? (
+            <p className="text-gray-600 text-xs text-center">暂无消息</p>
+          ) : (
+            messages.slice(-8).map((m, i) => (
+              <p key={i} className="text-xs text-gray-400 leading-relaxed">
+                {m}
+              </p>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 };

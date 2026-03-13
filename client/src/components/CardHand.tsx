@@ -9,6 +9,7 @@
 import React, { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useSocket } from '../hooks/useSocket';
+import { useSinglePlayer } from '../hooks/useSinglePlayer';
 import type { Card } from '../types/game';
 import { PLAYER_COLORS } from '../types/game';
 
@@ -22,7 +23,8 @@ const CARD_VISUAL: Record<string, { emoji: string; gradient: string }> = {
 };
 
 const CardHand: React.FC = () => {
-  const { playCard, endTurn, movePlayer } = useSocket();
+  const socket = useSocket();
+  const singlePlayer = useSinglePlayer();
 
   const {
     myHand,
@@ -31,14 +33,32 @@ const CardHand: React.FC = () => {
     players,
   } = useGameStore();
 
-  const isMyTurn   = mySocketId === currentPlayerId;
-  const myPlayer   = players.find((p) => p.id === mySocketId);
+  // 根据模式选择操作方法
+  const isSinglePlayerMode = singlePlayer.isSinglePlayer;
+  const playCardAction = isSinglePlayerMode 
+    ? singlePlayer.playCard 
+    : (cardId: string, targetId?: string) => socket.playCard({ cardId, targetId });
+  const endTurnAction = isSinglePlayerMode 
+    ? singlePlayer.endTurn 
+    : () => socket.endTurn();
+  const movePlayerAction = isSinglePlayerMode 
+    ? singlePlayer.movePlayer 
+    : (steps: number) => socket.movePlayer({ steps });
+
+  const isMyTurn   = isSinglePlayerMode 
+    ? currentPlayerId === 'player' 
+    : mySocketId === currentPlayerId;
+  
+  const myPlayer   = players.find((p) => isSinglePlayerMode ? p.id === 'player' : p.id === mySocketId);
   const canAct     = isMyTurn && (myPlayer?.actionPoints ?? 0) > 0;
 
   // 需要选择目标的卡牌 id
   const [pendingCard,   setPendingCard]   = useState<Card | null>(null);
   const [targetSelectVisible, setTargetSelectVisible] = useState(false);
   const [feedback,      setFeedback]      = useState<string>('');
+
+  // 获取人类玩家的 socketId
+  const humanPlayerId = isSinglePlayerMode ? 'player' : mySocketId;
 
   /** 打出一张牌（若需要目标则弹出选择） */
   const handlePlayCard = async (card: Card) => {
@@ -51,9 +71,9 @@ const CardHand: React.FC = () => {
       return;
     }
 
-    const res = await playCard({ cardId: card.id });
-    if (!res.ok) {
-      setFeedback(`❗ ${res.error}`);
+    const res = await playCardAction(card.id) as any;
+    if (!res || res.error) {
+      setFeedback(`❗ ${res?.error || '打牌失败'}`);
     } else {
       setFeedback(`✅ 打出：${card.name}`);
     }
@@ -65,9 +85,9 @@ const CardHand: React.FC = () => {
     if (!pendingCard) return;
     setTargetSelectVisible(false);
 
-    const res = await playCard({ cardId: pendingCard.id, targetId });
-    if (!res.ok) {
-      setFeedback(`❗ ${res.error}`);
+    const res = await playCardAction(pendingCard.id, targetId) as any;
+    if (!res || res.error) {
+      setFeedback(`❗ ${res?.error || '打牌失败'}`);
     } else {
       setFeedback(`✅ ${pendingCard.name} → 对手减速！`);
     }
@@ -78,21 +98,17 @@ const CardHand: React.FC = () => {
   /** 直接骰子移动（不打牌） */
   const handleDiceMove = async () => {
     if (!canAct) return;
-    const steps = Math.ceil(Math.random() * 4) + 1; // 随机 2-5 步
-    const res = await movePlayer({ steps });
-    if (!res.ok) {
-      setFeedback(`❗ ${res.error}`);
-    } else {
-      setFeedback(`🎲 骰子：前进 ${steps} 格`);
-    }
+    const steps = Math.floor(Math.random() * 6) + 1; // 随机 1-6 步
+    
+    movePlayerAction(steps);
+    setFeedback(`🎲 骰子：前进 ${steps} 格`);
     setTimeout(() => setFeedback(''), 2500);
   };
 
   /** 结束回合 */
   const handleEndTurn = async () => {
     if (!isMyTurn) return;
-    const res = await endTurn();
-    if (!res.ok) setFeedback(`❗ ${res.error}`);
+    endTurnAction();
     setTimeout(() => setFeedback(''), 2500);
   };
 
@@ -109,7 +125,9 @@ const CardHand: React.FC = () => {
         {isMyTurn ? (
           <span className="text-yellow-400 text-xs font-bold animate-pulse">⚡ 你的回合</span>
         ) : (
-          <span className="text-gray-600 text-xs">等待其他玩家...</span>
+          <span className="text-gray-600 text-xs">
+            {isSinglePlayerMode ? '等待 AI...' : '等待其他玩家...'}
+          </span>
         )}
       </div>
 
@@ -186,7 +204,7 @@ const CardHand: React.FC = () => {
             <p className="text-gray-400 text-xs text-center">{pendingCard?.description}</p>
 
             {players
-              .filter((p) => p.id !== mySocketId && !p.finished)
+              .filter((p) => p.id !== humanPlayerId && !p.finished)
               .map((p) => {
                 const colors = PLAYER_COLORS[p.colorIdx] ?? PLAYER_COLORS[0];
                 return (
