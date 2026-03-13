@@ -14,6 +14,7 @@ import Lobby        from './components/Lobby';
 import GameBoard    from './components/GameBoard';
 import CardHand     from './components/CardHand';
 import PlayerStatus from './components/PlayerStatus';
+import GameRulesModal from './components/GameRulesModal';
 
 // 根据消息内容决定颜色
 function getMessageColor(msg: string): string {
@@ -32,6 +33,7 @@ const App: React.FC = () => {
 
   const { phase, roomName, roomId, gameOver, rankings, mySocketId, players, messages, reset, deckStats } =
     useGameStore();
+  const [isRulesOpen, setIsRulesOpen] = React.useState(false);
 
   // ── 游戏结束界面 ──────────────────────────────
   if (gameOver || phase === 'finished') {
@@ -113,6 +115,13 @@ const App: React.FC = () => {
           NEON DISTRICT RACING
         </h1>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsRulesOpen(true)}
+            className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 bg-gray-800 hover:text-cyan-300 hover:bg-gray-700 px-2 py-1 rounded-md transition-colors"
+          >
+            ❓ 游戏规则
+          </button>
+          
           {deckStats && (
             <div className="hidden sm:flex items-center gap-1 text-[10px] text-gray-600 bg-gray-800 px-2 py-0.5 rounded-full">
               <span title="摸牌堆">🃏{deckStats.drawPile}</span>
@@ -161,6 +170,9 @@ const App: React.FC = () => {
           <CardHand />
         </aside>
       </main>
+
+      {/* 规则说明弹窗 */}
+      <GameRulesModal isOpen={isRulesOpen} onClose={() => setIsRulesOpen(false)} />
     </div>
   );
 };
