@@ -141,7 +141,8 @@ export function useSinglePlayer(): UseSinglePlayer {
       return;
     }
 
-    if (!isAiTurn) setIsAiTurn(true);
+    if (isAiTurn) return; // 已经在行动中，不要重复触发
+    setIsAiTurn(true);
 
     // AI 延迟行动
     setTimeout(() => {

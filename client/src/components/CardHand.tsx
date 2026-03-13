@@ -76,15 +76,7 @@ const CardHand: React.FC = () => {
     if (isMyTurn) {
       setCountdown(TURN_TIMEOUT);
       countdownRef.current = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(countdownRef.current!);
-            // 超时自动结束回合
-            endTurnAction();
-            return 0;
-          }
-          return prev - 1;
-        });
+        setCountdown((prev) => Math.max(0, prev - 1));
       }, 1000);
     }
 
@@ -93,6 +85,14 @@ const CardHand: React.FC = () => {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMyTurn]);
+
+  // 监听倒计时，超时则结束回合（避免在 setState 中触发 render side-effects 导致 React 崩溃）
+  useEffect(() => {
+    if (countdown === 0 && isMyTurn) {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      endTurnAction();
+    }
+  }, [countdown, isMyTurn, endTurnAction]);
 
   const showFeedback = (msg: string, color = 'text-cyan-300') => {
     setFeedback(msg);
