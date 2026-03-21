@@ -108,28 +108,48 @@ const PlayerStatus: React.FC = () => {
             </div>
 
             {/* 数据行 */}
-            <div className="grid grid-cols-3 gap-1.5 text-center">
+            <div className="grid grid-cols-5 gap-1 gap-y-1.5 text-center px-1">
               {/* 格子位置 */}
-              <div className="bg-gray-800/80 rounded-lg py-1 px-0.5">
+              <div className="bg-gray-800/80 rounded-lg py-1 px-0.5 flex flex-col items-center justify-center">
                 <div className="text-[9px] text-gray-500">格子</div>
-                <div className="text-xs font-bold text-white">#{player.position}</div>
+                <div className="text-[11px] font-bold text-white leading-tight">#{player.position}</div>
               </div>
 
               {/* 手牌数 */}
-              <div className="bg-gray-800/80 rounded-lg py-1 px-0.5">
+              <div className="bg-gray-800/80 rounded-lg py-1 px-0.5 flex flex-col items-center justify-center">
                 <div className="text-[9px] text-gray-500">手牌</div>
-                <div className="text-xs font-bold text-white">🃏 {player.handCount}</div>
+                <div className="text-[11px] font-bold text-white leading-tight">🃏{player.handCount}</div>
               </div>
 
               {/* 行动点 */}
-              <div className="bg-gray-800/80 rounded-lg py-1 px-0.5">
+              <div className="bg-gray-800/80 rounded-lg py-1 px-0.5 flex flex-col items-center justify-center">
                 <div className="text-[9px] text-gray-500">行动</div>
                 <div
-                  className={`text-xs font-bold ${
+                  className={`text-[11px] font-bold leading-tight ${
                     player.actionPoints > 0 ? 'text-green-400' : 'text-gray-600'
                   }`}
                 >
-                  ⚡ {player.actionPoints}
+                  ⚡{player.actionPoints}
+                </div>
+              </div>
+
+              {/* 档位 */}
+              <div className="bg-gray-800/80 rounded-lg py-1 px-0.5 flex flex-col items-center justify-center">
+                <div className="text-[9px] text-gray-500">档位</div>
+                <div className="text-[11px] font-bold text-blue-400 leading-tight">
+                  ⚙️{player.gear}
+                </div>
+              </div>
+
+              {/* 热量槽 */}
+              <div className="bg-gray-800/80 rounded-lg py-1 px-0.5 flex flex-col items-center justify-center">
+                <div className="text-[9px] text-gray-500">热量</div>
+                <div
+                  className={`text-[11px] font-bold leading-tight ${
+                    player.heat >= player.heatCapacity ? 'text-red-500 animate-pulse' : 'text-orange-400'
+                  }`}
+                >
+                  🔥{player.heat}/{player.heatCapacity}
                 </div>
               </div>
             </div>

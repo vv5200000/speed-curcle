@@ -14,68 +14,79 @@
  *  到达最后一格后回到索引 0（计圈）。
  */
 
-const Player = require('./Player');
-const CardDeck = require('./CardDeck');
+import Player from './Player';
+import CardDeck from './CardDeck';
 
 // ──────────────────────────────────────────────
 // 赛道定义（共 24 格，简单矩形环形赛道）
 // x/y 为格子在棋盘上的坐标，单位：格
 // ──────────────────────────────────────────────
-const TRACK = [
+export const TRACK = [
   // 底边 → 右下角
   { idx: 0,  type: 'start',    x: 0,  y: 5 },
   { idx: 1,  type: 'straight', x: 1,  y: 5 },
   { idx: 2,  type: 'straight', x: 2,  y: 5 },
   { idx: 3,  type: 'straight', x: 3,  y: 5 },
   { idx: 4,  type: 'straight', x: 4,  y: 5 },
-  { idx: 5,  type: 'corner',   x: 5,  y: 5 },
+  { idx: 5,  type: 'corner',   x: 5,  y: 5, speedLimit: 4 },
   // 右边 ↑
   { idx: 6,  type: 'straight', x: 5,  y: 4 },
   { idx: 7,  type: 'pit',      x: 5,  y: 3 },
   { idx: 8,  type: 'straight', x: 5,  y: 2 },
-  { idx: 9,  type: 'corner',   x: 5,  y: 1 },
+  { idx: 9,  type: 'corner',   x: 5,  y: 1, speedLimit: 4 },
   // 顶边 ←
   { idx: 10, type: 'straight', x: 4,  y: 1 },
   { idx: 11, type: 'straight', x: 3,  y: 1 },
   { idx: 12, type: 'straight', x: 2,  y: 1 },
   { idx: 13, type: 'straight', x: 1,  y: 1 },
-  { idx: 14, type: 'corner',   x: 0,  y: 1 },
+  { idx: 14, type: 'corner',   x: 0,  y: 1, speedLimit: 3 },
   // 左边 ↓
   { idx: 15, type: 'straight', x: 0,  y: 2 },
   { idx: 16, type: 'pit',      x: 0,  y: 3 },
   { idx: 17, type: 'straight', x: 0,  y: 4 },
   // 回到 start ─ 多出几个格子增加变数
-  { idx: 18, type: 'corner',   x: 1,  y: 4 },
+  { idx: 18, type: 'corner',   x: 1,  y: 4, speedLimit: 4 },
   { idx: 19, type: 'straight', x: 2,  y: 4 },
   { idx: 20, type: 'straight', x: 3,  y: 4 },
-  { idx: 21, type: 'corner',   x: 4,  y: 4 },
+  { idx: 21, type: 'corner',   x: 4,  y: 4, speedLimit: 5 },
   { idx: 22, type: 'straight', x: 4,  y: 5 }, // 内圈辅助格
   { idx: 23, type: 'straight', x: 3,  y: 5 }, // 内圈辅助格，回到 0 计圈
 ];
 
-const TRACK_LENGTH = TRACK.length; // 24
-const TOTAL_LAPS   = 3;            // 完成 3 圈即获胜
-const HAND_SIZE    = 4;            // 每人初始手牌数
+export const TRACK_LENGTH = TRACK.length; // 24
+export const TOTAL_LAPS   = 3;            // 完成 3 圈即获胜
+export const HAND_SIZE    = 4;            // 每人初始手牌数
 
 // 游戏阶段枚举
-const PHASE = {
+export const PHASE = {
   LOBBY:    'lobby',    // 大厅等待
   PLAYING:  'playing',  // 游戏进行中
   FINISHED: 'finished', // 游戏结束
 };
 
-class GameRoom {
+export class GameRoom {
+  roomId: string;
+  hostId: string;
+  roomName: string;
+  players: Map<string, Player>;
+  phase: string;
+  turnOrder: string[];
+  currentTurnIndex: number;
+  deck: CardDeck | null;
+  finishRank: number;
+  createdAt: number;
+
   /**
-   * @param {string} roomId   - 房间 ID
-   * @param {string} hostId   - 房主 Socket ID
-   * @param {string} roomName - 房间名称
+   * @param roomId   - 房间 ID
+   * @param hostId   - 房主 Socket ID
+   * @param roomName - 房间名称
    */
-  constructor(roomId, hostId, roomName) {
+  constructor(roomId: string, hostId: string, roomName: string) {
     this.roomId   = roomId;
     this.hostId   = hostId;
     this.roomName = roomName;
 
-    /** @type {Map<string, Player>} id → Player */
+    /** id → Player */
     this.players = new Map();
 
     /** 当前阶段 */
@@ -221,23 +232,62 @@ class GameRoom {
     const oldPos = player.position;
     let newPos   = oldPos + clampedSteps;
     let lapCompleted = false;
+    let heatAdded = 0;
+    let crashed = false;
 
-    // 处理圈数
-    if (newPos >= TRACK_LENGTH) {
-      const lapsGained = Math.floor(newPos / TRACK_LENGTH);
-      newPos %= TRACK_LENGTH;
+    // ── 检查弯道超速 ──
+    if (clampedSteps > 0) {
+      let checkPos = oldPos;
+      for (let i = 1; i <= clampedSteps; i++) {
+        checkPos += 1;
+        if (checkPos >= TRACK_LENGTH) checkPos %= TRACK_LENGTH;
+        const cell = TRACK[checkPos] as any;
+        if (cell.type === 'corner') {
+          const limit = cell.speedLimit || 4;
+          const effectiveLimit = player.tireTemp === 'cold' ? limit - 1 : limit;
+          if (player.turnSpeed > effectiveLimit) {
+            const limitExceeded = player.turnSpeed - effectiveLimit;
+            // 档位倍率：1档:x0, 2:x1, 3:x1, 4:x2, 5:x2, 6:x3
+            const mult = player.gear >= 6 ? 3 : player.gear >= 4 ? 2 : player.gear >= 2 ? 1 : 0;
+            heatAdded += limitExceeded * mult;
+          }
+        }
+      }
+    }
+
+    // 处理爆缸 (Spin Out)
+    if (player.heat + heatAdded > player.heatCapacity) {
+      crashed = true;
+      player.heat = player.heatCapacity;
+      player.gear = Math.max(1, player.gear - 1); // 降档
+      player.actionPoints = 0; // 丢失剩余行动次数
+      player.turnSpeed = 0; // 速度清零
+      // 爆缸停留在原地，不前进
+      newPos = oldPos;
+    } else {
+      player.heat += heatAdded;
+    }
+
+    // 处理圈数 (只有在未爆缸且前进跨越终点时才算完成一圈)
+    if (!crashed && oldPos + clampedSteps >= TRACK_LENGTH && clampedSteps > 0) {
+      const lapsGained = Math.floor((oldPos + clampedSteps) / TRACK_LENGTH);
+      newPos = (oldPos + clampedSteps) % TRACK_LENGTH;
       player.laps += lapsGained;
       lapCompleted = true;
 
       // 每完成一圈补抽 1 张牌
-      const newCard = this.deck.draw();
+      const newCard = this.deck!.draw();
       if (newCard) player.addCard(newCard);
     }
     // 后退越界时限制在 0
     if (newPos < 0) newPos = 0;
 
     player.moveTo(newPos);
-    player.actionPoints -= 1;
+    
+    // 如果没有爆缸，扣除一个基础行动点 (如果是打牌调用，外层会补回来)
+    if (!crashed) {
+      player.actionPoints -= 1;
+    }
 
     // 维修站效果：经过 pit 格时补抽 1 张牌
     const cell = TRACK[newPos];
@@ -261,7 +311,38 @@ class GameRoom {
       lapCompleted,
       finished,
       pitDraw,
+      heatAdded,
+      crashed,
+      heat: player.heat
     };
+  }
+
+  // ──────────────────────────────────────────────
+  // 进阶机制：换挡 (Gear)
+  // ──────────────────────────────────────────────
+  changeGear(playerId: string, targetGear: number) {
+    if (this.phase !== PHASE.PLAYING) return { ok: false, error: '游戏未在进行中' };
+    if (!this._isCurrentTurn(playerId)) return { ok: false, error: '现在不是你的回合' };
+    
+    const player = this.players.get(playerId);
+    if (!player) return { ok: false, error: '玩家不存在' };
+    if (targetGear < 1 || targetGear > 6) return { ok: false, error: '非法档位' };
+
+    const diff = Math.abs(targetGear - player.gear);
+    let heatCost = 0;
+    if (diff > 1) {
+      heatCost = diff - 1; // 跳档惩罚
+    }
+
+    if (player.heat + heatCost > player.heatCapacity) {
+      return { ok: false, error: '热量槽不足以支持跳步换挡' };
+    }
+
+    player.gear = targetGear;
+    player.heat += heatCost;
+    player.actionPoints = targetGear; // 换挡时将行动点设为新档位对应的值
+
+    return { ok: true, heat: player.heat, gear: player.gear, actionPoints: player.actionPoints };
   }
 
   // ──────────────────────────────────────────────
@@ -289,15 +370,17 @@ class GameRoom {
     const card = player.removeCard(cardId);
     if (!card) return { ok: false, error: '手牌中没有该卡牌' };
 
-    let effect = { type: card.type, value: card.value, actorId: playerId };
-    let error  = null;
+    let effect: any = { type: card.type, value: card.value, actorId: playerId };
+    let error: string | null = null;
 
     switch (card.type) {
       case 'move': {
-        // 移动卡：直接触发移动
+        // 累加本回合速度
+        player.turnSpeed += card.value;
         const moveResult = this.movePlayer(playerId, card.value);
         if (!moveResult.ok) {
-          // 移动失败则退回卡牌（行动点不扣）
+          // 移动失败则退回卡牌并减去速度
+          player.turnSpeed -= card.value;
           player.addCard(card);
           return { ok: false, error: moveResult.error };
         }
@@ -473,4 +556,3 @@ class GameRoom {
   }
 }
 
-module.exports = { GameRoom, TRACK, PHASE, TOTAL_LAPS };

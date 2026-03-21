@@ -43,6 +43,9 @@ const CardHand: React.FC = () => {
   const movePlayerAction = isSinglePlayerMode
     ? singlePlayer.movePlayer
     : (steps: number) => socket.movePlayer({ steps });
+  const changeGearAction = isSinglePlayerMode
+    ? singlePlayer.changeGear
+    : (targetGear: number) => socket.changeGear({ targetGear });
 
   const isMyTurn = isSinglePlayerMode
     ? currentPlayerId === 'player'
@@ -156,6 +159,16 @@ const CardHand: React.FC = () => {
     showFeedback('⏭ 回合已结束', 'text-gray-400');
   };
 
+  const handleChangeGear = async (targetGear: number) => {
+    if (!canAct) return;
+    const res = await changeGearAction(targetGear) as any;
+    if (!res || res.error) {
+      showFeedback(`❗ 换挡失败: ${res?.error || ''}`, 'text-red-400');
+    } else {
+      showFeedback(`⚙️ 成功切换至 ${targetGear} 档`, 'text-blue-300');
+    }
+  };
+
   // ── 倒计时颜色 ──
   const countdownColor =
     countdown > 20 ? 'text-green-400' :
@@ -247,8 +260,33 @@ const CardHand: React.FC = () => {
 
       {/* 操作按钮 */}
       {isMyTurn && (
-        <div className="flex gap-2 mt-3">
-          {/* 骰子按钮 */}
+        <div className="flex flex-col gap-2 mt-3">
+          {/* 档位控制 */}
+          <div className="flex items-center justify-between bg-gray-800 rounded-lg p-2 border border-gray-700 shadow-inner">
+             <span className="text-gray-400 text-xs">
+               ⚙️ 当前预设档位: <span className="text-blue-400 font-bold ml-1">{myPlayer?.gear || 1} 档</span>
+             </span>
+             <div className="flex gap-1">
+               {[1, 2, 3, 4, 5, 6].map(g => (
+                 <button 
+                   key={g} 
+                   onClick={() => handleChangeGear(g)}
+                   disabled={!canAct || g === myPlayer?.gear}
+                   className={`w-7 h-7 rounded text-xs font-bold transition-all ${
+                     g === myPlayer?.gear
+                       ? 'bg-blue-600 text-white shadow-[0_0_8px_#2563eb]'
+                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-40 disabled:hover:bg-gray-700'
+                   }`}
+                   title={`切换至 ${g} 档`}
+                 >
+                   {g}
+                 </button>
+               ))}
+             </div>
+          </div>
+
+          <div className="flex gap-2">
+            {/* 骰子按钮 */}
           <button
             onClick={handleDiceMove}
             disabled={!canAct || diceRolling}
@@ -268,8 +306,9 @@ const CardHand: React.FC = () => {
             onClick={handleEndTurn}
             className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-2 rounded-lg transition"
           >
-            ⏭ 结束
+            ⏭ 结束回合
           </button>
+          </div>
         </div>
       )}
 

@@ -19,6 +19,7 @@ export interface UseSinglePlayer {
   movePlayer: (steps: number) => void;
   playCard: (cardId: string, targetId?: string) => void;
   endTurn: () => void;
+  changeGear: (targetGear: number) => void;
   isAiTurn: boolean;
 }
 
@@ -131,6 +132,18 @@ export function useSinglePlayer(): UseSinglePlayer {
     syncState();
   }, [addMessage, syncState]);
 
+  // 换挡
+  const changeGear = useCallback((targetGear: number) => {
+    if (!globalGameInstance) return;
+    const result = globalGameInstance.changeGear(targetGear);
+    if (result.ok) {
+      addMessage(`⚙️ 你换到了 ${targetGear} 档`);
+    } else {
+      addMessage(`❗ 换挡失败: ${result.error}`);
+    }
+    syncState();
+  }, [addMessage, syncState]);
+
   // AI 行动
   const runAiAction = useCallback(() => {
     if (!globalGameInstance) return;
@@ -187,6 +200,7 @@ export function useSinglePlayer(): UseSinglePlayer {
     movePlayer,
     playCard,
     endTurn,
+    changeGear,
     isAiTurn,
   };
 }

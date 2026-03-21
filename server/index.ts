@@ -24,14 +24,14 @@
  *   error              { error }
  */
 
-const express   = require('express');
-const http      = require('http');
-const { Server }= require('socket.io');
-const cors      = require('cors');
-const path      = require('path');
-const { v4: uuidv4 } = require('uuid');
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
-const { GameRoom, PHASE } = require('./game/GameRoom');
+import { GameRoom, PHASE } from './game/GameRoom';
 
 // ── Express 基础配置 ──────────────────────────────
 const app    = express();
@@ -264,6 +264,35 @@ io.on('connection', (socket) => {
       cb?.({ ok: true, effect: result.effect });
     } catch (err) {
       console.error('[play-card error]', err);
+      cb?.({ ok: false, error: '服务器内部错误' });
+    }
+  });
+
+  // ── 换挡 ────────────────────────────────────
+  socket.on('change-gear', ({ targetGear }, cb) => {
+    try {
+      const roomId = playerRoom.get(socket.id);
+      const room   = rooms.get(roomId);
+      if (!room) return cb?.({ ok: false, error: '房间不存在' });
+
+      const result = room.changeGear(socket.id, targetGear);
+      if (!result.ok) {
+        socket.emit('error', { error: result.error });
+        return cb?.({ ok: false, error: result.error });
+      }
+
+      broadcastGameState(room);
+      sendPrivateStates(room);
+
+      io.to(roomId).emit('player-gear-changed', {
+        playerId: socket.id,
+        gear: result.gear,
+        heat: result.heat
+      });
+
+      cb?.({ ok: true, gear: result.gear, heat: result.heat });
+    } catch (err) {
+      console.error('[change-gear error]', err);
       cb?.({ ok: false, error: '服务器内部错误' });
     }
   });

@@ -10,7 +10,8 @@
  *  - shortcut  直接跳到赛道上最近的弯道格
  */
 
-const { v4: uuidv4 } = require('uuid');
+import { v4 as uuidv4 } from 'uuid';
+import { Card } from './Player';
 
 /** 基础卡牌模板 */
 const CARD_TEMPLATES = [
@@ -27,7 +28,10 @@ const CARD_TEMPLATES = [
   { type: 'shortcut', name: '捷径导航', description: '传送至赛道最近弯道格', value: 0, count: 2 },
 ];
 
-class CardDeck {
+export default class CardDeck {
+  drawPile: Card[];
+  discardPile: Card[];
+
   constructor() {
     /** 抽牌堆 */
     this.drawPile = [];
@@ -115,5 +119,3 @@ class CardDeck {
     };
   }
 }
-
-module.exports = CardDeck;

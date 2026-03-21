@@ -11,12 +11,12 @@
 /** 赛道格子类型 */
 export type CellType = 'start' | 'straight' | 'corner' | 'pit';
 
-/** 赛道格子 */
 export interface TrackCell {
   idx: number;   // 格子在赛道数组中的索引
   type: CellType;
   x: number;     // 棋盘列坐标
   y: number;     // 棋盘行坐标
+  speedLimit?: number; // 弯道限速 (Phase 3)
 }
 
 // ──────────────────────────────────────────────
@@ -47,6 +47,9 @@ export interface CardEffect {
   finished?: boolean;
   shielded?: boolean;
   blocked?: boolean;
+  heatAdded?: number;
+  crashed?: boolean;
+  heat?: number;
 }
 
 // ──────────────────────────────────────────────
@@ -65,6 +68,11 @@ export interface PublicPlayer {
   handCount: number;   // 手牌数量
   actionPoints: number;
   ready: boolean;
+  shielded?: boolean;
+  gear: number;
+  heat: number;
+  heatCapacity: number;
+  tireTemp: 'cold' | 'warm';
 }
 
 /** 玩家私有信息（仅发给本人） */
@@ -132,6 +140,11 @@ export interface PlayCardPayload {
   targetId?: string;
 }
 
+/** change-gear 请求 */
+export interface ChangeGearPayload {
+  targetGear: number;
+}
+
 /** player-move 请求 */
 export interface PlayerMovePayload {
   steps: number;
@@ -149,6 +162,13 @@ export interface PlayerMovedEvent {
   newPosition: number;
   lapCompleted: boolean;
   finished: boolean;
+}
+
+/** player-gear-changed 广播 */
+export interface PlayerGearChangedEvent {
+  playerId: string;
+  gear: number;
+  heat: number;
 }
 
 /** player-disconnected 广播 */

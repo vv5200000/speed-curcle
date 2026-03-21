@@ -12,23 +12,23 @@ const TRACK: TrackCell[] = [
   { idx: 2,  type: 'straight', x: 2,  y: 5 },
   { idx: 3,  type: 'straight', x: 3,  y: 5 },
   { idx: 4,  type: 'straight', x: 4,  y: 5 },
-  { idx: 5,  type: 'corner',   x: 5,  y: 5 },
+  { idx: 5,  type: 'corner',   x: 5,  y: 5, speedLimit: 4 },
   { idx: 6,  type: 'straight', x: 5,  y: 4 },
   { idx: 7,  type: 'pit',      x: 5,  y: 3 },
   { idx: 8,  type: 'straight', x: 5,  y: 2 },
-  { idx: 9,  type: 'corner',   x: 5,  y: 1 },
+  { idx: 9,  type: 'corner',   x: 5,  y: 1, speedLimit: 4 },
   { idx: 10, type: 'straight', x: 4,  y: 1 },
   { idx: 11, type: 'straight', x: 3,  y: 1 },
   { idx: 12, type: 'straight', x: 2,  y: 1 },
   { idx: 13, type: 'straight', x: 1,  y: 1 },
-  { idx: 14, type: 'corner',   x: 0,  y: 1 },
+  { idx: 14, type: 'corner',   x: 0,  y: 1, speedLimit: 3 },
   { idx: 15, type: 'straight', x: 0,  y: 2 },
   { idx: 16, type: 'pit',      x: 0,  y: 3 },
   { idx: 17, type: 'straight', x: 0,  y: 4 },
-  { idx: 18, type: 'corner',   x: 1,  y: 4 },
+  { idx: 18, type: 'corner',   x: 1,  y: 4, speedLimit: 4 },
   { idx: 19, type: 'straight', x: 2,  y: 4 },
   { idx: 20, type: 'straight', x: 3,  y: 4 },
-  { idx: 21, type: 'corner',   x: 4,  y: 4 },
+  { idx: 21, type: 'corner',   x: 4,  y: 4, speedLimit: 5 },
   { idx: 22, type: 'straight', x: 4,  y: 5 },
   { idx: 23, type: 'straight', x: 3,  y: 5 },
 ];
@@ -60,6 +60,11 @@ export interface LocalPlayer {
   hand: GameCard[];
   shielded: boolean;
   isAI: boolean;
+  gear: number;
+  heat: number;
+  heatCapacity: number;
+  tireTemp: 'cold' | 'warm';
+  turnSpeed: number;
 }
 
 // 牌组
@@ -198,6 +203,11 @@ export class SinglePlayerGame {
       hand: [],
       shielded: false,
       isAI,
+      gear: 1,
+      heat: 0,
+      heatCapacity: 3,
+      tireTemp: 'cold',
+      turnSpeed: 0,
     };
   }
 
@@ -247,9 +257,42 @@ export class SinglePlayerGame {
     const oldPos = player.position;
     let newPos = oldPos + clampedSteps;
     let lapCompleted = false;
+    let heatAdded = 0;
+    let crashed = false;
+
+    // ── 检查弯道超速 ──
+    if (clampedSteps > 0) {
+      let checkPos = oldPos;
+      for (let i = 1; i <= clampedSteps; i++) {
+        checkPos += 1;
+        if (checkPos >= TRACK_LENGTH) checkPos %= TRACK_LENGTH;
+        const cell = TRACK[checkPos] as any;
+        if (cell.type === 'corner') {
+          const limit = cell.speedLimit || 4;
+          const effectiveLimit = player.tireTemp === 'cold' ? limit - 1 : limit;
+          if (player.turnSpeed > effectiveLimit) {
+            const limitExceeded = player.turnSpeed - effectiveLimit;
+            const mult = player.gear >= 6 ? 3 : player.gear >= 4 ? 2 : player.gear >= 2 ? 1 : 0;
+            heatAdded += limitExceeded * mult;
+          }
+        }
+      }
+    }
+
+    // 处理爆缸 (Spin Out)
+    if (player.heat + heatAdded > player.heatCapacity) {
+      crashed = true;
+      player.heat = player.heatCapacity;
+      player.gear = Math.max(1, player.gear - 1);
+      player.actionPoints = 0;
+      player.turnSpeed = 0;
+      newPos = oldPos;
+    } else {
+      player.heat += heatAdded;
+    }
 
     // 计圈
-    if (newPos >= TRACK_LENGTH) {
+    if (!crashed && newPos >= TRACK_LENGTH && clampedSteps > 0) {
       const lapsGained = Math.floor(newPos / TRACK_LENGTH);
       newPos %= TRACK_LENGTH;
       player.laps += lapsGained;
@@ -261,7 +304,9 @@ export class SinglePlayerGame {
     if (newPos < 0) newPos = 0;
 
     player.position = newPos;
-    player.actionPoints -= 1;
+    if (!crashed) {
+      player.actionPoints -= 1;
+    }
 
     // 维修站效果
     const cell = TRACK[newPos];
@@ -390,10 +435,11 @@ export class SinglePlayerGame {
 
     switch (card.type) {
       case 'move': {
+        player.turnSpeed += card.value;
         const moveResult = this._movePlayer(playerId, card.value);
         if (!moveResult.ok) {
           player.hand.push(card);
-          player.actionPoints += 1; // 失败退还打牌消耗
+          player.turnSpeed -= card.value;
           return { ok: false, error: moveResult.error };
         }
         player.actionPoints += 1; // 补回因为 _movePlayer 内部扣除的行动点，保证该卡牌整体只消耗刚才打牌的 1 点
@@ -456,7 +502,8 @@ export class SinglePlayerGame {
   endTurn(): { ok: boolean; nextPlayerId?: string; error?: string } {
     const current = this.getCurrentPlayer();
     if (current) {
-      current.actionPoints = 1;
+      current.actionPoints = current.gear;
+      current.turnSpeed = 0;
     }
 
     // 跳到下一位
@@ -471,7 +518,8 @@ export class SinglePlayerGame {
 
     const next = this.getCurrentPlayer();
     if (next) {
-      next.actionPoints = 1;
+      next.actionPoints = next.gear;
+      next.turnSpeed = 0;
       // 回合开始补牌
       if (next.hand.length < HAND_SIZE) {
         const drawn = this.deck.draw();
@@ -507,6 +555,11 @@ export class SinglePlayerGame {
         actionPoints: p.actionPoints,
         handCount: p.hand.length,
         ready: true,
+        shielded: p.shielded,
+        gear: p.gear,
+        heat: p.heat,
+        heatCapacity: p.heatCapacity,
+        tireTemp: p.tireTemp,
       })),
       turnOrder: this.turnOrder,
       currentTurnIndex: this.currentTurnIndex,
@@ -531,6 +584,30 @@ export class SinglePlayerGame {
     if (this.onStateChange) {
       this.onStateChange();
     }
+  }
+
+  // 换挡
+  changeGear(targetGear: number): { ok: boolean; error?: string; gear?: number; heat?: number } {
+    const player = this.getCurrentPlayer();
+    if (!player || player.id !== 'player') return { ok: false, error: '不是你的回合' };
+    if (targetGear < 1 || targetGear > 6) return { ok: false, error: '非法档位' };
+
+    const diff = Math.abs(targetGear - player.gear);
+    let heatCost = 0;
+    if (diff > 1) {
+      heatCost = diff - 1;
+    }
+
+    if (player.heat + heatCost > player.heatCapacity) {
+      return { ok: false, error: '热量槽不足以支持跳步换挡' };
+    }
+
+    player.gear = targetGear;
+    player.heat += heatCost;
+    player.actionPoints = targetGear;
+    
+    this._notify();
+    return { ok: true, gear: player.gear, heat: player.heat };
   }
 }
 

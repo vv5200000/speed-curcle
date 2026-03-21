@@ -20,8 +20,10 @@ import type {
   PrivateGameState,
   CardPlayedEvent,
   PlayerMovedEvent,
+  PlayerGearChangedEvent,
   PlayerDisconnectedEvent,
   GameOverEvent,
+  ChangeGearPayload,
   AckResult,
 } from '../types/game';
 
@@ -115,6 +117,13 @@ export function useSocket() {
       addMessage(msg);
     };
 
+    // 玩家换挡
+    const onPlayerGearChanged = ({ playerId, gear, heat }: PlayerGearChangedEvent) => {
+      const store = useGameStore.getState();
+      const player = store.players.find((p) => p.id === playerId);
+      addMessage(`⚙️ ${player?.name ?? playerId} 换到了 ${gear} 档 (当前热量: ${heat})`);
+    };
+
     // 轮到自己
     const onYourTurn = () => {
       addMessage('⚡ 轮到你行动了！');
@@ -145,6 +154,7 @@ export function useSocket() {
     s.on('private-state',        onPrivateState);
     s.on('card-played',          onCardPlayed);
     s.on('player-moved',         onPlayerMoved);
+    s.on('player-gear-changed',  onPlayerGearChanged);
     s.on('your-turn',            onYourTurn);
     s.on('player-disconnected',  onPlayerDisconnected);
     s.on('game-over',            onGameOver);
@@ -162,6 +172,7 @@ export function useSocket() {
       s.off('private-state',       onPrivateState);
       s.off('card-played',         onCardPlayed);
       s.off('player-moved',        onPlayerMoved);
+      s.off('player-gear-changed', onPlayerGearChanged);
       s.off('your-turn',           onYourTurn);
       s.off('player-disconnected', onPlayerDisconnected);
       s.off('game-over',           onGameOver);
@@ -233,6 +244,15 @@ export function useSocket() {
     []
   );
 
+  /** 换挡 */
+  const changeGear = useCallback(
+    (payload: ChangeGearPayload): Promise<AckResult> =>
+      new Promise((resolve) => {
+        socket.current.emit('change-gear', payload, resolve);
+      }),
+    []
+  );
+
   return {
     socket: socket.current,
     createRoom,
@@ -242,5 +262,6 @@ export function useSocket() {
     movePlayer,
     playCard,
     endTurn,
+    changeGear,
   };
 }

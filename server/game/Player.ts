@@ -3,37 +3,42 @@
  * 玩家对象：保存玩家的所有状态信息
  */
 
-class Player {
+export interface Card {
+  id: string;
+  type: string;
+  value: number;
+  [key: string]: any;
+}
+
+export default class Player {
+  id: string;
+  name: string;
+  colorIdx: number;
+  position: number = 0;
+  hand: Card[] = [];
+  laps: number = 0;
+  finished: boolean = false;
+  rank: number = 0;
+  actionPoints: number = 1;
+  ready: boolean = false;
+  shielded?: boolean;
+
+  // 进阶模块状态 (Phase 3)
+  gear: number = 1; // 1-6 档
+  heat: number = 0; // 当前热量
+  heatCapacity: number = 3; // 热量槽上限
+  tireTemp: 'cold' | 'warm' = 'cold'; // 轮胎温度
+  turnSpeed: number = 0; // 本回合累计速度
+
   /**
-   * @param {string} id       - Socket ID，唯一标识
-   * @param {string} name     - 玩家昵称
-   * @param {number} colorIdx - 颜色索引（0-3），对应前端展示颜色
+   * @param id       - Socket ID，唯一标识
+   * @param name     - 玩家昵称
+   * @param colorIdx - 颜色索引（0-3），对应前端展示颜色
    */
-  constructor(id, name, colorIdx = 0) {
-    this.id = id;           // Socket ID
-    this.name = name;       // 玩家昵称
-    this.colorIdx = colorIdx; // 颜色索引
-
-    // 赛道位置（格子索引）
-    this.position = 0;
-
-    // 当前手牌列表（Card 对象数组）
-    this.hand = [];
-
-    // 本局已完成的圈数
-    this.laps = 0;
-
-    // 是否已完赛
-    this.finished = false;
-
-    // 完赛排名（1-4），0 表示未完赛
-    this.rank = 0;
-
-    // 剩余行动点（每回合开始时重置）
-    this.actionPoints = 1;
-
-    // 是否已准备（大厅阶段）
-    this.ready = false;
+  constructor(id: string, name: string, colorIdx: number = 0) {
+    this.id = id;
+    this.name = name;
+    this.colorIdx = colorIdx;
   }
 
   /**
@@ -49,9 +54,14 @@ class Player {
       laps: this.laps,
       finished: this.finished,
       rank: this.rank,
-      handCount: this.hand.length, // 只暴露手牌数量，不暴露内容
+      handCount: this.hand.length,
       actionPoints: this.actionPoints,
       ready: this.ready,
+      shielded: this.shielded,
+      gear: this.gear,
+      heat: this.heat,
+      heatCapacity: this.heatCapacity,
+      tireTemp: this.tireTemp,
     };
   }
 
@@ -95,11 +105,11 @@ class Player {
   }
 
   /**
-   * 重置本回合行动点
+   * 重置本回合初始状态，根据当前档位分配行动点
    */
   resetTurn() {
-    this.actionPoints = 1;
+    this.actionPoints = this.gear;
+    this.turnSpeed = 0;
   }
 }
 
-module.exports = Player;
