@@ -1,11 +1,14 @@
 /**
  * hooks/useSinglePlayer.ts
- * 单机模式 Hook - 管理 AI 对战逻辑
+ * 单机模式全局管理器
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { SinglePlayerGame } from '../game/SinglePlayerGame';
+
+// 全局单机游戏实例
+let globalGameInstance: SinglePlayerGame | null = null;
 
 export interface UseSinglePlayer {
   isSinglePlayer: boolean;
@@ -13,23 +16,20 @@ export interface UseSinglePlayer {
   setAiCount: (n: number) => void;
   startSinglePlayer: (playerName: string, aiCount: number) => void;
   endSinglePlayer: () => void;
-  // 游戏操作
   movePlayer: (steps: number) => void;
   playCard: (cardId: string, targetId?: string) => void;
   endTurn: () => void;
-  // AI 控制
   isAiTurn: boolean;
 }
 
 export function useSinglePlayer(): UseSinglePlayer {
-  const [isSinglePlayer, setIsSinglePlayer] = useState(false);
-  const [aiCount, setAiCount] = useState(2);
-  const [isAiTurn, setIsAiTurn] = useState(false);
-  
-  // 使用 ref 保存 game 实例，避免 stale closure
-  const gameRef = useRef<SinglePlayerGame | null>(null);
-
   const {
+    isSinglePlayer,
+    setIsSinglePlayer,
+    aiCount,
+    setAiCount,
+    isAiTurn,
+    setIsAiTurn,
     setMyName,
     applyPublicState,
     applyPrivateState,
@@ -41,18 +41,17 @@ export function useSinglePlayer(): UseSinglePlayer {
 
   // 同步状态到 store
   const syncState = useCallback(() => {
-    const game = gameRef.current;
-    if (!game) return;
+    if (!globalGameInstance) return;
 
-    const publicState = game.getPublicState();
-    const privateState = game.getPrivateState('player');
+    const publicState = globalGameInstance.getPublicState();
+    const privateState = globalGameInstance.getPrivateState('player');
 
     applyPublicState(publicState as any);
     applyPrivateState(privateState as any);
 
     // 检查游戏结束
-    if (game.isGameOver()) {
-      const rankings = game.players
+    if (globalGameInstance.isGameOver()) {
+      const rankings = globalGameInstance.players
         .filter(p => p.finished)
         .sort((a, b) => a.rank - b.rank)
         .map(p => ({
@@ -68,15 +67,14 @@ export function useSinglePlayer(): UseSinglePlayer {
 
   // 启动单人模式
   const startSinglePlayer = useCallback((playerName: string, aiCountNum: number) => {
-    const newGame = new SinglePlayerGame();
-    newGame.initGame(playerName, aiCountNum);
+    globalGameInstance = new SinglePlayerGame();
+    globalGameInstance.initGame(playerName, aiCountNum);
     
-    // 设置状态变化回调
-    newGame.onStateChange = () => {
+    // 监听状态变化同步
+    globalGameInstance.onStateChange = () => {
       syncState();
     };
     
-    gameRef.current = newGame;
     setIsSinglePlayer(true);
     setMyName(playerName);
     useGameStore.getState().setConnected(true);
@@ -84,115 +82,94 @@ export function useSinglePlayer(): UseSinglePlayer {
 
     // 初始同步
     setTimeout(syncState, 0);
-  }, [setMyName, addMessage, syncState]);
+  }, [setMyName, addMessage, syncState, setIsSinglePlayer]);
 
-  // 结束单人模式
+  // 结束单机模式
   const endSinglePlayer = useCallback(() => {
-    gameRef.current = null;
+    globalGameInstance = null;
     setIsSinglePlayer(false);
     reset();
     addMessage('已退出单人模式');
-  }, [reset, addMessage]);
+  }, [reset, addMessage, setIsSinglePlayer]);
 
   // 人类玩家移动
   const movePlayer = useCallback((steps: number) => {
-    const game = gameRef.current;
-    if (!game) return;
-    
-    const result = game.movePlayer(steps);
-    console.log('移动结果:', result);
+    if (!globalGameInstance) return;
+    const result = globalGameInstance.movePlayer(steps);
     if (result.ok) {
       if (result.lapCompleted) {
-        addMessage(`🎲 掷出 ${steps} 格，完成了 1 圈！`);
+        addMessage(`🎲 跑完一圈啦！完成圈数`);
       } else {
-        addMessage(`🎲 掷出 ${steps} 格，移动到第 ${game.players.find(p => p.id === 'player')?.position} 格`);
+        addMessage(`🎲 快速移动了 ${steps} 格！`);
       }
     } else {
       addMessage(`❗ ${result.error}`);
     }
-    
     syncState();
   }, [addMessage, syncState]);
 
   // 人类玩家打牌
   const playCard = useCallback((cardId: string, targetId?: string) => {
-    const game = gameRef.current;
-    if (!game) return;
-    
-    console.log('打牌:', cardId, targetId);
-    const result = game.playCard(cardId, targetId);
-    console.log('打牌结果:', result);
+    if (!globalGameInstance) return;
+    const result = globalGameInstance.playCard(cardId, targetId);
     if (result.ok) {
-      addMessage(`💳 打出卡牌`);
+      addMessage(`💳 成功发动卡牌效果`);
     } else {
       addMessage(`❗ ${result.error}`);
     }
-    
     syncState();
   }, [addMessage, syncState]);
 
   // 结束回合
   const endTurn = useCallback(() => {
-    const game = gameRef.current;
-    if (!game) return;
-    
-    const result = game.endTurn();
+    if (!globalGameInstance) return;
+    const result = globalGameInstance.endTurn();
     if (result.ok) {
-      const nextPlayer = game.getCurrentPlayer();
-      addMessage(`⏭️ 回合结束，轮到 ${nextPlayer?.name}`);
+      const nextPlayer = globalGameInstance.getCurrentPlayer();
+      addMessage(`⏭️ 回合跳过，现在轮到 ${nextPlayer?.name}`);
     }
-    
     syncState();
   }, [addMessage, syncState]);
 
   // AI 行动
   const runAiAction = useCallback(() => {
-    const game = gameRef.current;
-    if (!game) return;
+    if (!globalGameInstance) return;
 
-    const current = game.getCurrentPlayer();
+    const current = globalGameInstance.getCurrentPlayer();
     if (!current || !current.isAI) {
-      setIsAiTurn(false);
+      if (isAiTurn) setIsAiTurn(false);
       return;
     }
 
+    if (isAiTurn) return; // 已经在行动中，不要重复触发
     setIsAiTurn(true);
-    console.log('AI 开始行动:', current.name);
 
     // AI 延迟行动
     setTimeout(() => {
-      const g = gameRef.current;
-      if (!g) return;
+      if (!globalGameInstance) return;
 
-      const player = g.getCurrentPlayer();
+      const player = globalGameInstance.getCurrentPlayer();
       if (!player?.isAI) {
         setIsAiTurn(false);
         return;
       }
 
-      console.log('AI 执行行动:', player.name);
-      const result = g.aiPlayCard();
-      console.log('AI 行动结果:', result);
-      
-      // 强制结束 AI 回合
-      g.endTurn();
-      addMessage(`🤖 ${player.name} 结束了回合`);
+      globalGameInstance.aiPlayCard();
+      globalGameInstance.endTurn();
+      addMessage(`🤖 ${player.name} 结束了它的回合`);
       
       syncState();
       setIsAiTurn(false);
     }, 1500 + Math.random() * 1000);
-  }, [addMessage, syncState]);
+  }, [addMessage, syncState, isAiTurn, setIsAiTurn]);
 
-  // 监听回合变化，触发 AI
+  // 监听回合变化触发 AI
   useEffect(() => {
-    if (!isSinglePlayer || !gameRef.current) return;
+    if (!isSinglePlayer || !globalGameInstance) return;
 
     const timer = setTimeout(() => {
-      const game = gameRef.current;
-      if (!game) return;
-      
-      const current = game.getCurrentPlayer();
-      console.log('检查回合:', current?.name, 'isAI:', current?.isAI);
+      if (!globalGameInstance) return;
+      const current = globalGameInstance.getCurrentPlayer();
       if (current?.isAI) {
         runAiAction();
       }

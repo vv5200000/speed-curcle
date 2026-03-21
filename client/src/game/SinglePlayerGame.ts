@@ -291,21 +291,84 @@ export class SinglePlayerGame {
     return { ok: false, error: '不是你的回合' };
   }
 
-  // AI 打牌
+  // AI 打牌（智能策略版）
   aiPlayCard(): { ok: boolean; error?: string } {
     const player = this.getCurrentPlayer();
     if (!player || !player.isAI) {
       return { ok: false, error: '不是AI回合' };
     }
 
-    // 简单 AI：30% 概率打牌，否则直接移动
-    if (player.hand.length > 0 && Math.random() < 0.3) {
-      const card = player.hand[Math.floor(Math.random() * player.hand.length)];
-      const result = this._playCard(player.id, card.id);
-      return result;
+    const myProgress = player.laps * TRACK_LENGTH + player.position;
+    const otherPlayers = this.players.filter(p => p.id !== player.id && !p.finished);
+
+    // 找出领先最多的对手（进度最高）
+    const bestOpponent = otherPlayers.reduce<typeof otherPlayers[0] | null>((best, p) => {
+      const progress = p.laps * TRACK_LENGTH + p.position;
+      if (!best) return p;
+      const bestProgress = best.laps * TRACK_LENGTH + best.position;
+      return progress > bestProgress ? p : best;
+    }, null);
+
+    const bestOpponentProgress = bestOpponent
+      ? bestOpponent.laps * TRACK_LENGTH + bestOpponent.position
+      : 0;
+    const isLeading = myProgress >= bestOpponentProgress;
+    const isFarBehind = bestOpponentProgress - myProgress > 8;
+
+    // 按优先级评分选牌
+    if (player.hand.length > 0 && Math.random() < 0.75) {
+      // 分类手牌
+      const moveCards    = player.hand.filter(c => c.type === 'move');
+      const shortcutCards = player.hand.filter(c => c.type === 'shortcut');
+      const boostCards   = player.hand.filter(c => c.type === 'boost');
+      const slowCards    = player.hand.filter(c => c.type === 'slow');
+      const shieldCards  = player.hand.filter(c => c.type === 'shield');
+
+      // 策略1：落后超过8格时，优先使用捷径快速追赶
+      if (isFarBehind && shortcutCards.length > 0) {
+        const result = this._playCard(player.id, shortcutCards[0].id);
+        if (result.ok) return result;
+      }
+
+      // 策略2：有高价值移动卡时（4+格），优先使用
+      const highMoveCard = moveCards.find(c => c.value >= 4);
+      if (highMoveCard && Math.random() < 0.65) {
+        const result = this._playCard(player.id, highMoveCard.id);
+        if (result.ok) return result;
+      }
+
+      // 策略3：当有对手比自己领先且有减速卡时，45%概率攻击领先对手
+      if (!isLeading && slowCards.length > 0 && bestOpponent && bestOpponentProgress > myProgress && Math.random() < 0.45) {
+        // 找一个没有护盾的对手
+        const vulnerableOpponent = otherPlayers.find(p => !(p as any).shielded);
+        if (vulnerableOpponent) {
+          const result = this._playCard(player.id, slowCards[0].id, vulnerableOpponent.id);
+          if (result.ok) return result;
+        }
+      }
+
+      // 策略4：行动点为0时，使用 boost 卡
+      if (player.actionPoints <= 0 && boostCards.length > 0) {
+        const result = this._playCard(player.id, boostCards[0].id);
+        if (result.ok) return result;
+      }
+
+      // 策略5：对手有减速卡且自己没护盾时，35%概率给自己加护盾
+      const opponentHasSlow = otherPlayers.some(p => p.hand?.length > 0);
+      if (opponentHasSlow && !player.shielded && shieldCards.length > 0 && Math.random() < 0.35) {
+        const result = this._playCard(player.id, shieldCards[0].id);
+        if (result.ok) return result;
+      }
+
+      // 策略6：普通移动（随机选一张移动卡）
+      if (moveCards.length > 0 && Math.random() < 0.5) {
+        const card = moveCards[Math.floor(Math.random() * moveCards.length)];
+        const result = this._playCard(player.id, card.id);
+        if (result.ok) return result;
+      }
     }
 
-    // AI 直接移动
+    // 默认：骰子移动
     return this.aiMove();
   }
 
@@ -314,8 +377,13 @@ export class SinglePlayerGame {
     if (!player) return { ok: false, error: '玩家不存在' };
     if (this.phase !== 'playing') return { ok: false, error: '游戏未进行' };
 
+    if (player.actionPoints <= 0) return { ok: false, error: '行动点不足' };
+
     const cardIdx = player.hand.findIndex(c => c.id === cardId);
     if (cardIdx === -1) return { ok: false, error: '手牌中没有该卡牌' };
+
+    // 扣除行动点
+    player.actionPoints -= 1;
 
     const card = player.hand.splice(cardIdx, 1)[0];
     let effect: any = { type: card.type, value: card.value, actorId: playerId };
@@ -325,9 +393,10 @@ export class SinglePlayerGame {
         const moveResult = this._movePlayer(playerId, card.value);
         if (!moveResult.ok) {
           player.hand.push(card);
+          player.actionPoints += 1; // 失败退还打牌消耗
           return { ok: false, error: moveResult.error };
         }
-        player.actionPoints += 1; // 补回
+        player.actionPoints += 1; // 补回因为 _movePlayer 内部扣除的行动点，保证该卡牌整体只消耗刚才打牌的 1 点
         effect = { ...effect, ...moveResult };
         break;
       }
@@ -345,6 +414,7 @@ export class SinglePlayerGame {
         const target = this.players.find(p => p.id === targetId);
         if (!target) {
           player.hand.push(card);
+          player.actionPoints += 1; // 失败退还
           return { ok: false, error: '目标玩家不存在' };
         }
         if (target.shielded) {

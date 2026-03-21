@@ -58,6 +58,14 @@ interface GameStore {
   gameOver: boolean;
   rankings: Array<{ rank: number; playerId: string; name: string; laps: number }>;
 
+  // ── 单机模式状态 ──
+  isSinglePlayer: boolean;
+  setIsSinglePlayer: (v: boolean) => void;
+  aiCount: number;
+  setAiCount: (n: number) => void;
+  isAiTurn: boolean;
+  setIsAiTurn: (v: boolean) => void;
+
   // ── 消息日志 ──
   messages: string[];
   addMessage: (msg: string) => void;
@@ -93,6 +101,9 @@ const DEFAULT_STATE = {
   gameOver: false,
   rankings: [] as Array<{ rank: number; playerId: string; name: string; laps: number }>,
   messages: [] as string[],
+  isSinglePlayer: false,
+  aiCount: 2,
+  isAiTurn: false,
 };
 
 // ──────────────────────────────────────────────
@@ -109,6 +120,11 @@ export const useGameStore = create<GameStore>((set) => ({
   setRoom:       (roomId, roomName) => set({ roomId, roomName }),
   setMySocketId: (id)               => set({ mySocketId: id }),
   setMyName:     (name)             => set({ myName: name }),
+
+  // ── 单机模式 ──
+  setIsSinglePlayer: (v) => set({ isSinglePlayer: v }),
+  setAiCount:        (n) => set({ aiCount: n }),
+  setIsAiTurn:       (v) => set({ isAiTurn: v }),
 
   // ── 消息日志（最多保留 50 条） ──
   addMessage: (msg) =>
