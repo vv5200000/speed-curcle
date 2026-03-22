@@ -75,6 +75,8 @@ export class GameRoom {
   deck: CardDeck | null;
   finishRank: number;
   createdAt: number;
+  pendingAttack: { attackerId: string; targetId: string; cardId: string; expireAt: number; card: any } | null;
+  pendingAttackTimer: ReturnType<typeof setTimeout> | null;
 
   /**
    * @param roomId   - 房间 ID
@@ -106,6 +108,10 @@ export class GameRoom {
 
     /** 创建时间戳 */
     this.createdAt = Date.now();
+
+    /** Phase 4: 挂起的攻击（5s 防守窗口）*/
+    this.pendingAttack = null;
+    this.pendingAttackTimer = null;
   }
 
   // ──────────────────────────────────────────────
@@ -282,6 +288,24 @@ export class GameRoom {
     // 后退越界时限制在 0
     if (newPos < 0) newPos = 0;
 
+    // Phase 4: 尾流系统 (Slipstream)
+    let slipstream = false;
+    let slipstreamTargetId: string | undefined;
+
+    if (clampedSteps > 0 && !crashed) {
+      for (const [id, target] of this.players.entries()) {
+        if (id === playerId || target.finished) continue;
+        // 在新位置的正前方 1~2 格是否有对手
+        const dist = (target.position - newPos + TRACK_LENGTH) % TRACK_LENGTH;
+        if (dist === 1 || dist === 2) {
+          slipstream = true;
+          slipstreamTargetId = id;
+          player.actionPoints += 1; // 奖励额外行动点
+          break;
+        }
+      }
+    }
+
     player.moveTo(newPos);
     
     // 如果没有爆缸，扣除一个基础行动点 (如果是打牌调用，外层会补回来)
@@ -313,7 +337,9 @@ export class GameRoom {
       pitDraw,
       heatAdded,
       crashed,
-      heat: player.heat
+      heat: player.heat,
+      slipstream,
+      slipstreamTargetId,
     };
   }
 

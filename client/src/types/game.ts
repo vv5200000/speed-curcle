@@ -50,6 +50,8 @@ export interface CardEffect {
   heatAdded?: number;
   crashed?: boolean;
   heat?: number;
+  slipstream?: boolean;          // Phase 4: 尾流触发标识
+  slipstreamTargetId?: string;   // Phase 4: 蹭到了谁的尾流
 }
 
 // ──────────────────────────────────────────────
@@ -111,6 +113,12 @@ export interface PublicGameState {
   track: TrackCell[];
   totalLaps: number;
   deckStats: DeckStats | null;
+  pendingAttack: { 
+    attackerId: string; 
+    targetId: string; 
+    cardId: string; 
+    expireAt: number 
+  } | null; // Phase 4: 挂起的攻击状态
 }
 
 /** 私有游戏状态（含本人手牌） */
@@ -140,6 +148,11 @@ export interface PlayCardPayload {
   targetId?: string;
 }
 
+/** defend-attack 请求 (Phase 4) */
+export interface DefendAttackPayload {
+  cardId: string; // shield 卡的 ID
+}
+
 /** change-gear 请求 */
 export interface ChangeGearPayload {
   targetGear: number;
@@ -156,12 +169,21 @@ export interface CardPlayedEvent {
   effect: CardEffect;
 }
 
+/** attack-pending 广播 (Phase 4) */
+export interface AttackPendingEvent {
+  attackerId: string;
+  targetId: string;
+  cardId: string;
+  expireAt: number;
+}
+
 /** player-moved 广播 */
 export interface PlayerMovedEvent {
   playerId: string;
   newPosition: number;
   lapCompleted: boolean;
   finished: boolean;
+  slipstream?: boolean;
 }
 
 /** player-gear-changed 广播 */

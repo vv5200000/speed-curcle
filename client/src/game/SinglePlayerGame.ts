@@ -225,7 +225,7 @@ export class SinglePlayerGame {
   }
 
   // 人类玩家移动（掷骰子）
-  movePlayer(steps: number): { ok: boolean; error?: string; lapCompleted?: boolean; finished?: boolean } {
+  movePlayer(steps: number): { ok: boolean; error?: string; lapCompleted?: boolean; finished?: boolean; slipstream?: boolean } {
     const player = this.getCurrentPlayer();
     if (!player || !player.isAI) {
       // 人类玩家
@@ -246,7 +246,7 @@ export class SinglePlayerGame {
     return this._movePlayer(player.id, steps);
   }
 
-  _movePlayer(playerId: string, steps: number): { ok: boolean; error?: string; lapCompleted?: boolean; finished?: boolean } {
+  _movePlayer(playerId: string, steps: number): { ok: boolean; error?: string; lapCompleted?: boolean; finished?: boolean; slipstream?: boolean } {
     const player = this.players.find(p => p.id === playerId);
     if (!player) return { ok: false, error: '玩家不存在' };
     if (this.phase !== 'playing') return { ok: false, error: '游戏未进行' };
@@ -303,6 +303,19 @@ export class SinglePlayerGame {
     }
     if (newPos < 0) newPos = 0;
 
+    let slipstream = false;
+    if (clampedSteps > 0 && !crashed) {
+      for (const target of this.players) {
+        if (target.id === playerId || target.finished) continue;
+        const dist = (target.position - newPos + TRACK_LENGTH) % TRACK_LENGTH;
+        if (dist === 1 || dist === 2) {
+          slipstream = true;
+          player.actionPoints += 1;
+          break;
+        }
+      }
+    }
+
     player.position = newPos;
     if (!crashed) {
       player.actionPoints -= 1;
@@ -324,7 +337,7 @@ export class SinglePlayerGame {
     }
 
     this._notify();
-    return { ok: true, lapCompleted, finished };
+    return { ok: true, lapCompleted, finished, slipstream };
   }
 
   // 打牌

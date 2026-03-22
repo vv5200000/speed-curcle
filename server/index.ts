@@ -228,6 +228,7 @@ io.on('connection', (socket) => {
         newPosition: result.newPosition,
         lapCompleted: result.lapCompleted,
         finished:    result.finished,
+        slipstream:  result.slipstream,
       });
 
       checkGameOver(room);

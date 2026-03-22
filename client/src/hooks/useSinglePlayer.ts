@@ -103,6 +103,9 @@ export function useSinglePlayer(): UseSinglePlayer {
       } else {
         addMessage(`🎲 快速移动了 ${steps} 格！`);
       }
+      if (result.slipstream) {
+        addMessage(`💨 蹭到尾流！获得额外行动点！`);
+      }
     } else {
       addMessage(`❗ ${result.error}`);
     }
