@@ -17,11 +17,30 @@ import type { Card } from '../types/game';
 import { PLAYER_COLORS } from '../types/game';
 
 const CARD_VISUAL: Record<string, { emoji: string; gradient: string; glowColor: string }> = {
-  move:     { emoji: '🚗', gradient: 'from-cyan-700 to-cyan-900',   glowColor: '#06b6d4' },
-  boost:    { emoji: '⚡', gradient: 'from-yellow-600 to-yellow-900', glowColor: '#facc15' },
+  move:     { emoji: '🏎️', gradient: 'from-cyan-700 to-cyan-900',    glowColor: '#06b6d4' },
+  boost:    { emoji: '⚡',  gradient: 'from-yellow-600 to-yellow-900', glowColor: '#facc15' },
   shield:   { emoji: '🛡️', gradient: 'from-blue-700 to-blue-900',    glowColor: '#3b82f6' },
-  slow:     { emoji: '💥', gradient: 'from-red-700 to-red-900',      glowColor: '#ef4444' },
+  slow:     { emoji: '💥',  gradient: 'from-red-700 to-red-900',      glowColor: '#ef4444' },
+  attack:   { emoji: '🚧',  gradient: 'from-orange-700 to-orange-900', glowColor: '#f97316' },
+  counter:  { emoji: '🔄',  gradient: 'from-teal-700 to-teal-900',    glowColor: '#14b8a6' },
+  cooldown: { emoji: '❄️',  gradient: 'from-sky-700 to-sky-900',      glowColor: '#0ea5e9' },
   shortcut: { emoji: '🛤️', gradient: 'from-green-700 to-green-900',  glowColor: '#22c55e' },
+  heat:     { emoji: '🔥',  gradient: 'from-red-900 to-gray-900',     glowColor: '#dc2626' },
+};
+
+// 稀有度边框颜色映射
+const RARITY_BORDER: Record<string, string> = {
+  N: 'border-gray-600',
+  R: 'border-blue-500',
+  S: 'border-purple-500',
+  L: 'border-yellow-400',
+};
+
+const RARITY_GLOW: Record<string, string> = {
+  N: '',
+  R: '0 0 8px #3b82f680',
+  S: '0 0 10px #a855f780',
+  L: '0 0 14px #facc1580',
 };
 
 const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
@@ -238,24 +257,43 @@ const CardHand: React.FC = () => {
           <p className="text-gray-600 text-xs italic self-center">暂无手牌</p>
         ) : (
           myHand.map((card) => {
+            const isHeatCard = !!(card as any).isHeatCard;
+            const rarity: string = (card as any).rarity ?? 'N';
+            const rarityBorderClass = RARITY_BORDER[rarity] ?? RARITY_BORDER.N;
+            const rarityGlow = RARITY_GLOW[rarity] ?? '';
             const vis = CARD_VISUAL[card.type] ?? { emoji: '❓', gradient: 'from-gray-700 to-gray-900', glowColor: '#888' };
+
+            if (isHeatCard) {
+              // 热力卡：红色特殊样式，不可交互
+              return (
+                <div
+                  key={card.id}
+                  title="热力卡 — 过弯超速产生，占用手牌格位，不可打出"
+                  className="flex-shrink-0 w-[80px] rounded-xl p-2 text-left border border-red-800/60 bg-gradient-to-b from-red-950 to-gray-900 opacity-70 cursor-not-allowed select-none"
+                >
+                  <div className="text-lg mb-1">🔥</div>
+                  <div className="text-[10px] font-bold text-red-400 leading-tight">热力卡</div>
+                  <div className="text-[8px] text-red-600 mt-1">⚠ 不可打出</div>
+                </div>
+              );
+            }
+
             return (
               <button
                 key={card.id}
                 onClick={() => handlePlayCard(card)}
                 disabled={!canAct}
-                title={card.description}
+                title={card.description || card.name}
                 className={`
                   flex-shrink-0 w-[100px] rounded-xl p-2.5 text-left border transition-all duration-200
                   bg-gradient-to-b ${vis.gradient}
+                  ${rarityBorderClass}
                   ${canAct
-                    ? 'border-gray-600 hover:border-transparent hover:scale-110 hover:-translate-y-1 cursor-pointer shadow-md'
-                    : 'border-gray-800 opacity-40 cursor-not-allowed'
+                    ? 'hover:border-transparent hover:scale-110 hover:-translate-y-1 cursor-pointer shadow-md'
+                    : 'opacity-40 cursor-not-allowed'
                   }
                 `}
-                style={canAct ? {
-                  '--glow-color': vis.glowColor,
-                } as React.CSSProperties : undefined}
+                style={canAct ? { boxShadow: rarityGlow || undefined } : undefined}
                 onMouseEnter={(e) => {
                   if (canAct) {
                     (e.currentTarget as HTMLElement).style.boxShadow = `0 0 14px ${vis.glowColor}66, 0 8px 20px rgba(0,0,0,0.5)`;
@@ -263,12 +301,21 @@ const CardHand: React.FC = () => {
                   }
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.boxShadow = '';
+                  (e.currentTarget as HTMLElement).style.boxShadow = rarityGlow || '';
                   (e.currentTarget as HTMLElement).style.borderColor = '';
                 }}
               >
                 <div className="text-xl mb-1">{vis.emoji}</div>
                 <div className="text-xs font-bold text-white leading-tight">{card.name}</div>
+                {rarity !== 'N' && (
+                  <div className={`text-[8px] font-bold mt-0.5 ${
+                    rarity === 'L' ? 'text-yellow-400' :
+                    rarity === 'S' ? 'text-purple-400' :
+                    'text-blue-400'
+                  }`}>
+                    {'★'.repeat(rarity === 'L' ? 4 : rarity === 'S' ? 3 : 2)}
+                  </div>
+                )}
                 <div className="text-[9px] text-gray-400 mt-1 leading-tight line-clamp-2">
                   {card.description}
                 </div>

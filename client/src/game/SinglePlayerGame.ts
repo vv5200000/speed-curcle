@@ -35,16 +35,21 @@ const TRACK: TrackCell[] = [
 
 const TRACK_LENGTH = TRACK.length;
 const TOTAL_LAPS = 3;
-const HAND_SIZE = 4;
+const HAND_LIMIT = 5;   // Phase 5: 手牌上限（含热力卡）
+const INIT_HAND_SIZE = 3; // 初始发牌数
 
 // 卡牌类型定义
-export type CardType = 'move' | 'boost' | 'shield' | 'slow' | 'shortcut';
+export type CardType = 'move' | 'boost' | 'shield' | 'slow' | 'shortcut' | 'heat' | 'cooldown' | 'attack' | 'counter';
 
 export interface GameCard {
   id: string;
   type: CardType;
   value: number;
   name: string;
+  description?: string; // Phase 5: 可选描述
+  rarity?: string;      // N/R/S/L
+  isHeatCard?: boolean; // 是否为热力卡
+  isPlayable?: boolean; // 是否可打出
 }
 
 // 玩家接口
@@ -90,17 +95,30 @@ class LocalDeck {
     for (let i = 0; i < 6; i++) {
       deck.push({ id: `c${id++}`, type: 'boost', value: 1, name: '涡轮增压' });
     }
-    // 护盾
-    for (let i = 0; i < 4; i++) {
-      deck.push({ id: `c${id++}`, type: 'shield', value: 0, name: '能量护盾' });
-    }
     // 减速 (后退2格)
     for (let i = 0; i < 4; i++) {
-      deck.push({ id: `c${id++}`, type: 'slow', value: -2, name: '电磁脉冲' });
+      deck.push({ id: `c${id++}`, type: 'slow',     value: -2, name: '电磁脉冲',   rarity: 'R', isHeatCard: false });
     }
-    // 捷径
+    // 攻击
+    for (let i = 0; i < 2; i++) {
+      deck.push({ id: `c${id++}`, type: 'attack',   value: -2, name: '路障投掷',   rarity: 'N', isHeatCard: false });
+    }
+    // 护盾
     for (let i = 0; i < 3; i++) {
-      deck.push({ id: `c${id++}`, type: 'shortcut', value: 0, name: '捷径导航' });
+      deck.push({ id: `c${id++}`, type: 'shield',   value: 0,  name: '能量护盾',   rarity: 'R', isHeatCard: false });
+    }
+    // 反制
+    for (let i = 0; i < 2; i++) {
+      deck.push({ id: `c${id++}`, type: 'counter',  value: 1,  name: '紧急规避',   rarity: 'N', isHeatCard: false });
+    }
+    // 冷却
+    for (let i = 0; i < 3; i++) {
+      deck.push({ id: `c${id++}`, type: 'cooldown', value: 1,  name: '冷却液',     rarity: 'R', isHeatCard: false });
+    }
+    deck.push({ id: `c${id++}`, type: 'cooldown', value: 99, name: '热力疏导', rarity: 'S', isHeatCard: false });
+    // 捷径
+    for (let i = 0; i < 2; i++) {
+      deck.push({ id: `c${id++}`, type: 'shortcut', value: 0,  name: '捷径导航',   rarity: 'R', isHeatCard: false });
     }
 
     return deck;
@@ -190,7 +208,7 @@ export class SinglePlayerGame {
       p.finished = false;
       p.rank = 0;
       p.actionPoints = 1;
-      p.hand = this.deck.drawMany(HAND_SIZE);
+      p.hand = this.deck.drawMany(INIT_HAND_SIZE);
       p.shielded = false;
     }
 
@@ -290,13 +308,40 @@ export class SinglePlayerGame {
     // 处理爆缸 (Spin Out)
     if (player.heat + heatAdded > player.heatCapacity) {
       crashed = true;
-      player.heat = player.heatCapacity;
+      // 爆缸：清除所有热力卡
+      player.hand = player.hand.filter(c => !(c as any).isHeatCard);
+      player.heat = 0;
       player.gear = Math.max(1, player.gear - 1);
       player.actionPoints = 0;
       player.turnSpeed = 0;
       newPos = oldPos;
     } else {
-      player.heat += heatAdded;
+      // 过弯超速：生成热力卡注入手牌
+      for (let i = 0; i < heatAdded; i++) {
+        player.heat += 1;
+        if (player.hand.length < HAND_LIMIT) {
+          player.hand.push({
+            id: `heat_${Date.now()}_${i}`,
+            type: 'heat',
+            value: 0,
+            name: '热力',
+            description: '⚠ 占用手牌格位，不可打出。',
+            rarity: 'N',
+            isHeatCard: true,
+            isPlayable: false,
+          });
+        }
+        if (player.heat > player.heatCapacity) {
+          crashed = true;
+          player.hand = player.hand.filter(c => !(c as any).isHeatCard);
+          player.heat = 0;
+          player.gear = Math.max(1, player.gear - 1);
+          player.actionPoints = 0;
+          player.turnSpeed = 0;
+          newPos = oldPos;
+          break;
+        }
+      }
     }
 
     // 计圈
@@ -311,6 +356,7 @@ export class SinglePlayerGame {
     }
     if (newPos < 0) newPos = 0;
 
+    // Phase 5: 尾流系统 — GDD 标准：+2格移动，不计弯道热量
     let slipstream = false;
     if (clampedSteps > 0 && !crashed) {
       for (const target of this.players) {
@@ -318,7 +364,8 @@ export class SinglePlayerGame {
         const dist = (target.position - newPos + TRACK_LENGTH) % TRACK_LENGTH;
         if (dist === 1 || dist === 2) {
           slipstream = true;
-          player.actionPoints += 1;
+          // +2格移动（不触发热量结算）
+          newPos = (newPos + 2) % TRACK_LENGTH;
           break;
         }
       }
@@ -630,7 +677,7 @@ export class SinglePlayerGame {
       next.actionPoints = next.gear;
       next.turnSpeed = 0;
       // 回合开始补牌
-      if (next.hand.length < HAND_SIZE) {
+      if (next.hand.length < HAND_LIMIT) {
         const drawn = this.deck.draw();
         if (drawn) next.hand.push(drawn);
       }

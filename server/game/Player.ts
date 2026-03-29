@@ -1,5 +1,5 @@
 /**
- * Player.js
+ * Player.ts
  * 玩家对象：保存玩家的所有状态信息
  */
 
@@ -7,44 +7,57 @@ export interface Card {
   id: string;
   type: string;
   value: number;
+  rarity?: string;
+  isHeatCard?: boolean;
+  isPlayable?: boolean;
   [key: string]: any;
 }
+
+/** 手牌上限（含热力卡） */
+export const HAND_LIMIT = 5;
 
 export default class Player {
   id: string;
   name: string;
   colorIdx: number;
   position: number = 0;
-  hand: Card[] = [];
+  hand: Card[] = [];        // 普通手牌 + 热力卡均在此数组，上限 HAND_LIMIT 张
   laps: number = 0;
   finished: boolean = false;
   rank: number = 0;
   actionPoints: number = 1;
   ready: boolean = false;
   shielded?: boolean;
+  crashPenalty: boolean = false; // Phase 6: 爆缸后下回合换档惩罚标记
 
   // 进阶模块状态 (Phase 3)
-  gear: number = 1; // 1-6 档
-  heat: number = 0; // 当前热量
-  heatCapacity: number = 3; // 热量槽上限
-  tireTemp: 'cold' | 'warm' = 'cold'; // 轮胎温度
-  turnSpeed: number = 0; // 本回合累计速度
+  gear: number = 1;
+  heat: number = 0;          // 热量槽当前值（不再用手牌数量表示）
+  heatCapacity: number = 3;  // 热量槽上限
+  tireTemp: 'cold' | 'warm' = 'cold';
+  turnSpeed: number = 0;
 
-  /**
-   * @param id       - Socket ID，唯一标识
-   * @param name     - 玩家昵称
-   * @param colorIdx - 颜色索引（0-3），对应前端展示颜色
-   */
   constructor(id: string, name: string, colorIdx: number = 0) {
     this.id = id;
     this.name = name;
     this.colorIdx = colorIdx;
   }
 
-  /**
-   * 将玩家数据序列化为可传输的纯对象（隐去私有信息）
-   * @returns {object}
-   */
+  /** 手牌中热力卡数量 */
+  get heatCardCount(): number {
+    return this.hand.filter(c => c.isHeatCard).length;
+  }
+
+  /** 手牌中普通可用牌数量 */
+  get normalCardCount(): number {
+    return this.hand.filter(c => !c.isHeatCard).length;
+  }
+
+  /** 是否还能接收新卡（手牌未满）*/
+  get canDrawCard(): boolean {
+    return this.hand.length < HAND_LIMIT;
+  }
+
   toPublic() {
     return {
       id: this.id,
@@ -62,13 +75,11 @@ export default class Player {
       heat: this.heat,
       heatCapacity: this.heatCapacity,
       tireTemp: this.tireTemp,
+      heatCardCount: this.heatCardCount, // Phase 5: 手牌中持有的热力卡数量
+      crashPenalty: this.crashPenalty,
     };
   }
 
-  /**
-   * 将玩家数据序列化（含手牌），仅发给该玩家自己
-   * @returns {object}
-   */
   toPrivate() {
     return {
       ...this.toPublic(),
@@ -76,40 +87,43 @@ export default class Player {
     };
   }
 
-  /**
-   * 将玩家移动到指定格子
-   * @param {number} targetCell - 目标格子索引
-   */
-  moveTo(targetCell) {
+  moveTo(targetCell: number) {
     this.position = targetCell;
   }
 
-  /**
-   * 从手牌中移除指定卡牌
-   * @param {string} cardId
-   * @returns {object|null} 被移除的卡牌，不存在则返回 null
-   */
-  removeCard(cardId) {
-    const idx = this.hand.findIndex((c) => c.id === cardId);
+  removeCard(cardId: string): Card | null {
+    const idx = this.hand.findIndex(c => c.id === cardId);
     if (idx === -1) return null;
     const [card] = this.hand.splice(idx, 1);
     return card;
   }
 
-  /**
-   * 向手牌中添加卡牌
-   * @param {object} card
-   */
-  addCard(card) {
+  addCard(card: Card) {
     this.hand.push(card);
   }
 
   /**
-   * 重置本回合初始状态，根据当前档位分配行动点
+   * 冷却手牌中的热力卡（将其移出手牌，热量槽数值对应减少）
+   * @param count 要冷却的热力卡数量（0 = 全部）
    */
+  coolHeatCards(count: number = 0): number {
+    const heatCards = this.hand.filter(c => c.isHeatCard);
+    const toRemove = count === 0 || count >= heatCards.length ? heatCards : heatCards.slice(0, count);
+    for (const card of toRemove) {
+      const idx = this.hand.findIndex(c => c.id === card.id);
+      if (idx !== -1) this.hand.splice(idx, 1);
+    }
+    const removed = toRemove.length;
+    this.heat = Math.max(0, this.heat - removed);
+    return removed;
+  }
+
   resetTurn() {
     this.actionPoints = this.gear;
     this.turnSpeed = 0;
+    // 轮胎：完成第一圈后变暖
+    if (this.laps >= 1 && this.tireTemp === 'cold') {
+      this.tireTemp = 'warm';
+    }
   }
 }
-

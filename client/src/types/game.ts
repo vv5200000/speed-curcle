@@ -24,7 +24,13 @@ export interface TrackCell {
 // ──────────────────────────────────────────────
 
 /** 卡牌类型 */
-export type CardType = 'move' | 'boost' | 'shield' | 'slow' | 'shortcut';
+export type CardType = 'move' | 'boost' | 'shield' | 'slow' | 'shortcut' | 'heat' | 'cooldown' | 'attack' | 'counter';
+
+/** 卡牌稀有度 */
+export type CardRarity = 'N' | 'R' | 'S' | 'L';
+
+/** 手牌上限（含热力卡） */
+export const HAND_SIZE = 5;
 
 /** 卡牌对象 */
 export interface Card {
@@ -32,7 +38,10 @@ export interface Card {
   type: CardType;
   name: string;
   description: string;
-  value: number;   // 正数为增益，负数为减益
+  value: number;         // 正数为增益，负数为减益
+  rarity?: CardRarity;  // 稀有度：普通/稀有/史诗/传说
+  isHeatCard?: boolean; // 是否为热力卡（不可主动打出）
+  isPlayable?: boolean; // 是否当前可打出（false = 灰显不可点）
 }
 
 /** 卡牌效果广播载荷 */
@@ -55,12 +64,12 @@ export interface CardEffect {
 }
 
 /*
- * Phase 4: 多人竞技与策略 (DRAFT & COMBAT PvP Modules)
- * - [/] 尾流 (Slipstream) UI 视觉表现 (残影拖尾动画)
- * - [/] 战斗射程系统 (Card Range Logic)
- * - [/] 防御响应 5s 窗口机制 (Blocking Defense Window)
- * - [/] 单机模式 AI 挂起攻击响应机制 (AI Defense Simulation)
- * - [ ] Debuff 视觉强化 (Slow/EMP Effect on Track)
+ * Phase 4: 多人竞技与策略 ✅ 完成
+ * Phase 5: 核心玩法完整化
+ * - [/] 卡牌系统扩展（热力卡、冷却卡、PVP 攻击/防御卡）
+ * - [/] 热力卡占手牌格位（手牌上限 5 张）
+ * - [/] 尾流机制修正 (+2格，不计热量)
+ * - [ ] 弯道限速标注 UI
  */
 
 // ──────────────────────────────────────────────

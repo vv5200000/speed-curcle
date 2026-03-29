@@ -14,8 +14,8 @@
  *  到达最后一格后回到索引 0（计圈）。
  */
 
-import Player from './Player';
-import CardDeck from './CardDeck';
+import Player, { HAND_LIMIT } from './Player';
+import CardDeck, { createHeatCard } from './CardDeck';
 
 // ──────────────────────────────────────────────
 // 赛道定义（共 24 格，简单矩形环形赛道）
@@ -53,9 +53,9 @@ export const TRACK = [
   { idx: 23, type: 'straight', x: 3,  y: 5 }, // 内圈辅助格，回到 0 计圈
 ];
 
-export const TRACK_LENGTH = TRACK.length; // 24
-export const TOTAL_LAPS   = 3;            // 完成 3 圈即获胜
-export const HAND_SIZE    = 4;            // 每人初始手牌数
+export const TRACK_LENGTH  = TRACK.length; // 24
+export const TOTAL_LAPS    = 3;            // 完成 3 圈即获胜
+export const INIT_HAND_SIZE = 3;           // 每人初始手牌数（其余 2 格热力卡预留）
 
 // 游戏阶段枚举
 export const PHASE = {
@@ -203,7 +203,10 @@ export class GameRoom {
       player.finished     = false;
       player.rank         = 0;
       player.actionPoints = 1;
-      player.hand         = this.deck.drawMany(HAND_SIZE);
+      player.heat         = 0;
+      player.tireTemp     = 'cold';
+      player.crashPenalty = false;
+      player.hand         = this.deck.drawMany(INIT_HAND_SIZE);
     }
 
     return { ok: true };
@@ -264,14 +267,34 @@ export class GameRoom {
     // 处理爆缸 (Spin Out)
     if (player.heat + heatAdded > player.heatCapacity) {
       crashed = true;
-      player.heat = player.heatCapacity;
+      // 爆缸：清空热量槽 + 移出手牌中所有热力卡
+      player.coolHeatCards(0);
+      player.heat = 0;
       player.gear = Math.max(1, player.gear - 1); // 降档
-      player.actionPoints = 0; // 丢失剩余行动次数
-      player.turnSpeed = 0; // 速度清零
-      // 爆缸停留在原地，不前进
+      player.actionPoints = 0;
+      player.turnSpeed = 0;
+      player.crashPenalty = true; // Phase 6: 下回合换档惩罚
       newPos = oldPos;
     } else {
-      player.heat += heatAdded;
+      // 过弯超速：生成热力卡注入手牌
+      for (let i = 0; i < heatAdded; i++) {
+        player.heat += 1;
+        if (player.hand.length < HAND_LIMIT) {
+          player.hand.push(createHeatCard());
+        }
+        // 若手牌已满仍超热，直接爆缸
+        if (player.heat > player.heatCapacity) {
+          crashed = true;
+          player.coolHeatCards(0);
+          player.heat = 0;
+          player.gear = Math.max(1, player.gear - 1);
+          player.actionPoints = 0;
+          player.turnSpeed = 0;
+          player.crashPenalty = true;
+          newPos = oldPos;
+          break;
+        }
+      }
     }
 
     // 处理圈数 (只有在未爆缸且前进跨越终点时才算完成一圈)
@@ -288,19 +311,22 @@ export class GameRoom {
     // 后退越界时限制在 0
     if (newPos < 0) newPos = 0;
 
-    // Phase 4: 尾流系统 (Slipstream)
+    // Phase 5: 尾流系统 (Slipstream) — GDD 标准：+2格免费移动，不计入过弯热量
     let slipstream = false;
     let slipstreamTargetId: string | undefined;
+    let slipstreamBonus = 0;
 
     if (clampedSteps > 0 && !crashed) {
       for (const [id, target] of this.players.entries()) {
         if (id === playerId || target.finished) continue;
-        // 在新位置的正前方 1~2 格是否有对手
         const dist = (target.position - newPos + TRACK_LENGTH) % TRACK_LENGTH;
         if (dist === 1 || dist === 2) {
           slipstream = true;
           slipstreamTargetId = id;
-          player.actionPoints += 1; // 奖励额外行动点
+          // GDD 标准：额外 +2 格移动，不触发弯道热量结算
+          slipstreamBonus = 2;
+          const bonusPos = (newPos + slipstreamBonus) % TRACK_LENGTH;
+          newPos = bonusPos;
           break;
         }
       }
@@ -429,43 +455,44 @@ export class GameRoom {
         effect.shielded = true;
         break;
       }
-      case 'slow': {
-        // 减速：让目标玩家后退
+      case 'slow':
+      case 'attack': {
+        // 攻击/减速：让目标玩家后退（进入 5s 防守窗口）
         const target = this.players.get(targetId);
         if (!target) {
           player.addCard(card);
           return { ok: false, error: '目标玩家不存在' };
         }
 
-        // Phase 4: 射程判定 (5格)
+        // 射程判定（slow=5格，attack根据卡牌类型）
+        const maxRange = card.type === 'attack' && card.name === '碰撞冲击' ? 1 : 5;
         const trackDist = (target.position - player.position + TRACK_LENGTH) % TRACK_LENGTH;
         const dist = Math.min(trackDist, (player.position - target.position + TRACK_LENGTH) % TRACK_LENGTH);
-        
-        if (dist > 5) {
+        if (dist > maxRange) {
           player.addCard(card);
-          return { ok: false, error: '目标过远，超出射程 (5格)' };
+          return { ok: false, error: `目标过远，超出射程 (${maxRange}格)` };
         }
 
-        // Phase 4: 防守时间窗口 (5s)
-        if (this.pendingAttackTimer) {
-          clearTimeout(this.pendingAttackTimer);
-        }
-
+        // 防守时间窗口 (5s)
+        if (this.pendingAttackTimer) clearTimeout(this.pendingAttackTimer);
         const expireAt = Date.now() + 5000;
-        this.pendingAttack = {
-          attackerId: playerId,
-          targetId: targetId!,
-          cardId: card.id,
-          card: card,
-          expireAt
-        };
-
-        this.pendingAttackTimer = setTimeout(() => {
-          this.resolvePendingAttack();
-          // 需要在外部调用处处理广播，或者在这里触发回调
-        }, 5000);
+        this.pendingAttack = { attackerId: playerId, targetId: targetId!, cardId: card.id, card, expireAt };
+        this.pendingAttackTimer = setTimeout(() => { this.resolvePendingAttack(); }, 5000);
 
         effect = { ...effect, targetId, expireAt, pending: true };
+        break;
+      }
+      case 'cooldown': {
+        // 冷却卡：移出手牌中的热力卡
+        const cooled = player.coolHeatCards(card.value === 99 ? 0 : card.value);
+        effect.cooledCount = cooled;
+        effect.heat = player.heat;
+        break;
+      }
+      case 'counter': {
+        // 反制卡：标记玩家处于「反制」状态，pendingAttack 被反弹
+        player.shielded = true; // 暂时复用 shielded，后续可细化
+        effect.countered = true;
         break;
       }
       case 'shortcut': {
@@ -516,8 +543,8 @@ export class GameRoom {
     const next   = this.players.get(nextId);
     if (next) {
       next.resetTurn();
-      // 每回合开始时补抽一张牌（如果手牌 < HAND_SIZE）
-      if (next.hand.length < HAND_SIZE) {
+      // 每回合开始时补抽一张普通牌（如果手牌 < HAND_LIMIT）
+      if (next.hand.length < HAND_LIMIT) {
         const drawn = this.deck.draw();
         if (drawn) next.addCard(drawn);
       }

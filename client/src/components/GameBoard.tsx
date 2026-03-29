@@ -28,7 +28,7 @@ const CELL_CONFIGS: Record<string, {
 }> = {
   start:    { fill: '#0d2d1a', stroke: '#22c55e', label: 'START', icon: '🏁', glow: '#22c55e44' },
   straight: { fill: '#121c2e', stroke: '#1e3a5f', label: '',      icon: '',   glow: 'none' },
-  corner:   { fill: '#0f1830', stroke: '#3b82f6', label: 'C',     icon: '🔄', glow: '#3b82f633' },
+  corner:   { fill: '#0f1830', stroke: '#f59e0b', label: 'C',     icon: '↩️', glow: '#f59e0b33' },
   pit:      { fill: '#1f1208', stroke: '#f97316', label: 'PIT',   icon: '🔧', glow: '#f9731633' },
 };
 
@@ -68,15 +68,22 @@ function TrackCellRect({
   cell,
   isCurrentPlayerHere,
   playersHere,
+  myTurnSpeed = 0,
 }: {
   cell: TrackCell;
   isCurrentPlayerHere: boolean;
   playersHere: number;
+  myTurnSpeed?: number;
 }) {
   const cx = OFFSET_X + cell.x * CELL_SIZE;
   const cy = OFFSET_Y + cell.y * CELL_SIZE;
   const size = CELL_SIZE - CELL_PAD * 2;
   const cfg = CELL_CONFIGS[cell.type] ?? CELL_CONFIGS['straight'];
+
+  const isCorner = cell.type === 'corner';
+  const speedLimit = (cell as any).speedLimit as number | undefined;
+  // 当玩家速度超过弯道限速时，显示红色预警
+  const speedWarning = isCorner && speedLimit != null && myTurnSpeed > speedLimit && isCurrentPlayerHere;
 
   return (
     <g>
@@ -88,7 +95,7 @@ function TrackCellRect({
           width={size + 6}
           height={size + 6}
           rx={11}
-          fill={cfg.glow}
+          fill={speedWarning ? '#ef444433' : cfg.glow}
           filter="url(#blur2)"
         />
       )}
@@ -101,9 +108,9 @@ function TrackCellRect({
         height={size}
         rx={8}
         fill={cfg.fill}
-        stroke={isCurrentPlayerHere ? '#facc15' : cfg.stroke}
-        strokeWidth={isCurrentPlayerHere ? 2 : 1.5}
-        filter={isCurrentPlayerHere ? 'url(#glow-yellow)' : undefined}
+        stroke={speedWarning ? '#ef4444' : isCurrentPlayerHere ? '#facc15' : cfg.stroke}
+        strokeWidth={speedWarning || isCurrentPlayerHere ? 2 : 1.5}
+        filter={speedWarning ? 'url(#glow-red)' : isCurrentPlayerHere ? 'url(#glow-yellow)' : undefined}
       />
 
       {/* 格子索引号 */}
@@ -121,12 +128,36 @@ function TrackCellRect({
       {cfg.icon && (
         <text
           x={cx + CELL_SIZE / 2}
-          y={cy + CELL_SIZE / 2 + 5}
+          y={cy + CELL_SIZE / 2 + (isCorner && speedLimit != null ? 0 : 5)}
           textAnchor="middle"
-          fontSize={16}
+          fontSize={14}
         >
           {cfg.icon}
         </text>
+      )}
+
+      {/* Phase 5.4: 弯道限速标注 */}
+      {isCorner && speedLimit != null && (
+        <g>
+          <rect
+            x={cx + CELL_SIZE / 2 - 14}
+            y={cy + CELL_SIZE / 2 + 6}
+            width={28}
+            height={13}
+            rx={4}
+            fill={speedWarning ? '#ef4444cc' : '#f59e0bcc'}
+          />
+          <text
+            x={cx + CELL_SIZE / 2}
+            y={cy + CELL_SIZE / 2 + 16}
+            textAnchor="middle"
+            fontSize={8}
+            fill="#fff"
+            fontWeight="bold"
+          >
+            🏎️{speedLimit}
+          </text>
+        </g>
       )}
     </g>
   );
@@ -322,6 +353,17 @@ const GameBoard: React.FC = () => {
               </feMerge>
             </filter>
 
+            {/* 红色发光（超速弯道预警） */}
+            <filter id="glow-red" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+              <feColorMatrix in="blur" type="matrix"
+                values="1 0 0 0 0.8  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="redBlur" />
+              <feMerge>
+                <feMergeNode in="redBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+
             {/* 玩家发光 */}
             <filter id="player-glow" x="-60%" y="-60%" width="220%" height="220%">
               <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
@@ -353,12 +395,16 @@ const GameBoard: React.FC = () => {
             const isCurrentHere = players.find(
               p => p.id === currentPlayerId && p.position === cell.idx
             ) != null;
+            // Phase 5.4: 获取当前玩家速度用于限速预警
+            const myPlayer = players.find(p => p.id === currentPlayerId);
+            const myTurnSpeed = (myPlayer as any)?.turnSpeed ?? 0;
             return (
               <TrackCellRect
                 key={cell.idx}
                 cell={cell}
                 isCurrentPlayerHere={isCurrentHere}
                 playersHere={phereCount}
+                myTurnSpeed={myTurnSpeed}
               />
             );
           })}

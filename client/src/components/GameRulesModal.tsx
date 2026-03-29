@@ -12,17 +12,21 @@ interface GameRulesModalProps {
 }
 
 const CARD_EXPLANATIONS: Record<CardType, { icon: string; name: string; desc: string }> = {
-  move: { icon: '🚗', name: '移动卡', desc: '根据卡牌数值（通常1-3格）直接在赛道上前进相应的距离。' },
-  boost: { icon: '⚡', name: '加速卡 (Boost)', desc: '增加你的行动点，或者获得大幅度的前进爆发力，让你跑得更远。' },
-  shortcut: { icon: '🛤️', name: '捷径卡 (Shortcut)', desc: '无视普通路径，直接瞬移一段距离，是落后时追赶的利器。' },
-  slow: { icon: '💥', name: '减速卡 (Slow)', desc: '指定一名其他玩家，使其受到攻击！目标玩家不仅会后退格子，甚至可能会跳过回合。' },
-  shield: { icon: '🛡️', name: '护盾卡 (Shield)', desc: '激活后，在接下来的一回合内免疫其他玩家的“减速卡”攻击。' },
+  move:     { icon: '🏎️', name: '移动卡',          desc: '根据卡牌数值（1-6格）在赛道上前进，是最基础的推进手段。' },
+  boost:    { icon: '⚡',  name: '加速卡 (Boost)',  desc: '增加行动点，获得额外的前进爆发力，让你跑得更远。' },
+  shortcut: { icon: '🛤️', name: '捷径卡',          desc: '传送至前方最近的弯道格，是落后时追赶的利器。' },
+  slow:     { icon: '💥',  name: '电磁脉冲 (EMP)', desc: '让目标玩家后退 2 格（射程 5 格），被攻击方有 5 秒防御窗口。' },
+  attack:   { icon: '🚧',  name: '路障投掷',        desc: '在目标前方放置路障，使其下回合移动力-2（射程 3 格）。' },
+  shield:   { icon: '🛡️', name: '护盾卡',          desc: '在接下来的防御窗口内抵消对手攻击效果，一次性使用。' },
+  counter:  { icon: '🔄',  name: '紧急规避',        desc: '将即将受到的位移惩罚减少 1 格，或反弹给攻击方（黑客反制）。' },
+  cooldown: { icon: '❄️',  name: '冷却卡',          desc: '将手牌中的热力卡移回热量池（冷却液移1张，热力疏导移全部）。' },
+  heat:     { icon: '🔥',  name: '热力卡 ⚠',       desc: '不可主动打出！过弯超速时自动生成并占据手牌格位。手牌满时直接爆缸！' },
 };
 
 const CELL_EXPLANATIONS = [
-  { icon: '🏁', name: '起点/终点', desc: '完成一圈的标志。每次经过这里，不仅圈数+1，还会额外摸一张牌。' },
-  { icon: '🔄', name: '弯道', desc: '普通的弯道路段。' },
-  { icon: '🔧', name: '维修站 (Pit)', desc: '不幸踩中维修站的玩家，下回合会少一个行动点，被迫休整。' },
+  { icon: '🏁', name: '起点/终点', desc: '完成一圈的标志。每次经过，圈数+1，并自动补充一张手牌。' },
+  { icon: '↩️', name: '弯道 (Corner)', desc: '⚠️ 带有限速标注（🏎️ N）。超速通过会产生热力卡！爆缸危险！' },
+  { icon: '🔧', name: '维修站 (Pit)', desc: '踩中维修站会清除所有热力卡（全部冷却），但会损失一个行动点。' },
 ];
 
 const GameRulesModal: React.FC<GameRulesModalProps> = ({ isOpen, onClose }) => {
