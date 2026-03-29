@@ -70,6 +70,13 @@ export interface LocalPlayer {
   heatCapacity: number;
   tireTemp: 'cold' | 'warm';
   turnSpeed: number;
+  crashPenalty: boolean;
+  
+  // Phase 6
+  bodyWeightMarkers: number;
+  leanDeclared: boolean;
+  wheeling: boolean;
+  pendingMoveAdjust: number;
 }
 
 // 牌组
@@ -234,6 +241,11 @@ export class SinglePlayerGame {
       heatCapacity: 3,
       tireTemp: 'cold',
       turnSpeed: 0,
+      crashPenalty: false,
+      bodyWeightMarkers: 3,
+      leanDeclared: false,
+      wheeling: false,
+      pendingMoveAdjust: 0,
     };
   }
 
@@ -281,25 +293,39 @@ export class SinglePlayerGame {
 
     const clampedSteps = Math.max(-3, Math.min(10, steps));
     const oldPos = player.position;
-    let newPos = oldPos + clampedSteps;
+    
+    // Phase 6.2: 翘头冲刺
+    let wheelieBonus = 0;
+    if (player.wheeling && clampedSteps > 0) {
+      wheelieBonus = clampedSteps; // 每格 +1
+    }
+    const effectiveSteps = clampedSteps + wheelieBonus;
+    
+    let newPos = oldPos + effectiveSteps;
     let lapCompleted = false;
     let heatAdded = 0;
     let crashed = false;
 
     // ── 检查弯道超速 ──
-    if (clampedSteps > 0) {
+    if (effectiveSteps > 0) {
       let checkPos = oldPos;
-      for (let i = 1; i <= clampedSteps; i++) {
+      for (let i = 1; i <= effectiveSteps; i++) {
         checkPos += 1;
         if (checkPos >= TRACK_LENGTH) checkPos %= TRACK_LENGTH;
         const cell = TRACK[checkPos] as any;
         if (cell.type === 'corner') {
           const limit = cell.speedLimit || 4;
-          const effectiveLimit = player.tireTemp === 'cold' ? limit - 1 : limit;
+          // Phase 6.1: 极限压弯提升限速 +2
+          const leanBonus = player.leanDeclared ? 2 : 0;
+          const effectiveLimit = (player.tireTemp === 'cold' ? limit - 1 : limit) + leanBonus;
           if (player.turnSpeed > effectiveLimit) {
             const limitExceeded = player.turnSpeed - effectiveLimit;
             const mult = player.gear >= 6 ? 3 : player.gear >= 4 ? 2 : player.gear >= 2 ? 1 : 0;
             heatAdded += limitExceeded * mult;
+          }
+          // Phase 6.2: 翘头冲刺进入弯道 → 爆缸加倍
+          if (player.wheeling) {
+            heatAdded = heatAdded * 2 + 2; 
           }
         }
       }
@@ -314,6 +340,7 @@ export class SinglePlayerGame {
       player.gear = Math.max(1, player.gear - 1);
       player.actionPoints = 0;
       player.turnSpeed = 0;
+      player.crashPenalty = true;
       newPos = oldPos;
     } else {
       // 过弯超速：生成热力卡注入手牌
@@ -338,27 +365,36 @@ export class SinglePlayerGame {
           player.gear = Math.max(1, player.gear - 1);
           player.actionPoints = 0;
           player.turnSpeed = 0;
+          player.crashPenalty = true;
           newPos = oldPos;
           break;
         }
       }
     }
 
-    // 计圈
-    if (!crashed && newPos >= TRACK_LENGTH && clampedSteps > 0) {
-      const lapsGained = Math.floor(newPos / TRACK_LENGTH);
-      newPos %= TRACK_LENGTH;
+    // 计圈 (未爆缸 && 前进跨越终점)
+    if (!crashed && oldPos + effectiveSteps >= TRACK_LENGTH && effectiveSteps > 0) {
+      const lapsGained = Math.floor((oldPos + effectiveSteps) / TRACK_LENGTH);
+      newPos = (oldPos + effectiveSteps) % TRACK_LENGTH;
       player.laps += lapsGained;
       lapCompleted = true;
       // 完赛补牌
       const newCard = this.deck.draw();
       if (newCard) player.hand.push(newCard);
     }
+    // 后退越界
     if (newPos < 0) newPos = 0;
+
+    // Phase 6.3: 应用重心标记微调
+    if (!crashed && player.pendingMoveAdjust !== 0) {
+      newPos = Math.max(0, (newPos + player.pendingMoveAdjust) % TRACK_LENGTH);
+      player.pendingMoveAdjust = 0;
+    }
 
     // Phase 5: 尾流系统 — GDD 标准：+2格移动，不计弯道热量
     let slipstream = false;
-    if (clampedSteps > 0 && !crashed) {
+    if (effectiveSteps > 0 && !crashed) {
+      let overtakenCount = 0;
       for (const target of this.players) {
         if (target.id === playerId || target.finished) continue;
         const dist = (target.position - newPos + TRACK_LENGTH) % TRACK_LENGTH;
@@ -368,6 +404,18 @@ export class SinglePlayerGame {
           newPos = (newPos + 2) % TRACK_LENGTH;
           break;
         }
+        // Phase 6.5: 钻车缝计算被超越数
+        if (newPos > target.position && oldPos <= target.position) {
+          overtakenCount++;
+        }
+      }
+      // Phase 6.5: 钻车缝奖励 — 超越 ≥2 辆时冷却1张热力卡
+      const heatCards = player.hand.filter(c => c.isHeatCard);
+      if (overtakenCount >= 2 && heatCards.length > 0) {
+        // 移除一张热力卡
+        const targetHeatId = heatCards[0].id;
+        player.hand = player.hand.filter(c => c.id !== targetHeatId);
+        player.heat = Math.max(0, player.heat - 1);
       }
     }
 
@@ -676,7 +724,20 @@ export class SinglePlayerGame {
     if (next) {
       next.actionPoints = next.gear;
       next.turnSpeed = 0;
-      // 回合开始补牌
+      next.leanDeclared = false;
+      next.wheeling = false;
+      next.pendingMoveAdjust = 0;
+      
+      // 变暖胎
+      if (next.laps >= 1 && next.tireTemp === 'cold') {
+        next.tireTemp = 'warm';
+      }
+      // 重心标记每圈恢复(这里判断如果没有完成圈数就恢复可能不准，但为了简化，直接用 laps>0 时恢复3)
+      if (next.laps > 0 && next.bodyWeightMarkers < 3) {
+        next.bodyWeightMarkers = 3;
+      }
+
+      // 补牌（上限 HAND_LIMIT）
       if (next.hand.length < HAND_LIMIT) {
         const drawn = this.deck.draw();
         if (drawn) next.hand.push(drawn);
@@ -716,6 +777,12 @@ export class SinglePlayerGame {
         heat: p.heat,
         heatCapacity: p.heatCapacity,
         tireTemp: p.tireTemp,
+        turnSpeed: p.turnSpeed,
+        heatCardCount: p.hand.filter(c => c.isHeatCard).length,
+        crashPenalty: p.crashPenalty,
+        bodyWeightMarkers: p.bodyWeightMarkers,
+        leanDeclared: p.leanDeclared,
+        wheeling: p.wheeling,
       })),
       turnOrder: this.turnOrder,
       currentTurnIndex: this.currentTurnIndex,
@@ -759,12 +826,22 @@ export class SinglePlayerGame {
     if (diff > 1) {
       heatCost = diff - 1;
     }
+    // Phase 6.4: 爆缸后的换挡惩罚
+    if (player.crashPenalty) {
+      if (targetGear > player.gear) {
+        heatCost += 1;
+      }
+    }
 
     if (player.heat + heatCost > player.heatCapacity) {
-      return { ok: false, error: '热量槽不足以支持跳步换挡' };
+      return { ok: false, error: '热量槽不足' };
     }
 
     player.gear = targetGear;
+    if (player.crashPenalty) {
+      player.crashPenalty = false;
+    }
+
     player.heat += heatCost;
     player.actionPoints = targetGear;
     

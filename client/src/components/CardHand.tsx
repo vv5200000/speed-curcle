@@ -217,6 +217,33 @@ const CardHand: React.FC = () => {
     }
   };
 
+  // ── Phase 6 进阶驾驶操作 ──
+  const handleLean = () => {
+    if (!canAct) return;
+    if (isSinglePlayerMode) {
+      singlePlayer.declareLean();
+    } else {
+      showFeedback('❗ 多人模式暂未实装极限压弯', 'text-gray-400');
+    }
+  };
+
+  const handleWheelie = () => {
+    if (!canAct) return;
+    if (isSinglePlayerMode) {
+      singlePlayer.declareWheelie();
+    } else {
+      showFeedback('❗ 多人模式暂未实装翘头冲刺', 'text-gray-400');
+    }
+  };
+
+  const handleAdjustBodyWeight = (direction: 1 | -1) => {
+    if (isSinglePlayerMode) {
+      singlePlayer.adjustBodyWeight(direction);
+    } else {
+      showFeedback('❗ 多人模式暂未实装重心微调', 'text-gray-400');
+    }
+  };
+
   // ── 倒计时颜色 ──
   const countdownColor =
     countdown > 20 ? 'text-green-400' :
@@ -361,7 +388,57 @@ const CardHand: React.FC = () => {
              </div>
           </div>
 
-          <div className="flex gap-2">
+          {/* Phase 6 进阶驾驶操作区 */}
+          {isSinglePlayerMode && (
+            <div className="flex gap-2.5">
+              {/* 极限压弯 */}
+              <button
+                onClick={handleLean}
+                disabled={!canAct || myPlayer?.leanDeclared}
+                className="flex-1 bg-orange-700/80 hover:bg-orange-600 disabled:opacity-40 text-white text-[10px] font-bold py-1.5 rounded-lg border border-orange-500 transition shadow-[0_0_8px_rgba(249,115,22,0.3)] disabled:shadow-none"
+                title="极限压弯：限速+2，盲抽压力卡"
+              >
+                🏍️ 极限压弯
+              </button>
+              {/* 翘头冲刺 */}
+              <button
+                onClick={handleWheelie}
+                disabled={!canAct || myPlayer?.wheeling || (myPlayer?.gear || 1) < 3}
+                className="flex-1 bg-red-700/80 hover:bg-red-600 disabled:opacity-40 text-white text-[10px] font-bold py-1.5 rounded-lg border border-red-500 transition shadow-[0_0_8px_rgba(239,68,68,0.3)] disabled:shadow-none"
+                title="翘头冲刺：直道中需3档以上，每移动1格额外+1步"
+              >
+                💥 翘头冲刺
+              </button>
+            </div>
+          )}
+          
+          {isSinglePlayerMode && (
+            <div className="flex items-center justify-between bg-gray-800 rounded-lg px-2 py-1 border border-gray-700">
+              <span className="text-gray-400 text-[10px]">
+                ⚖️ 重心标记: <span className="text-blue-400 font-bold ml-1">{myPlayer?.bodyWeightMarkers ?? 3}</span>
+              </span>
+              <div className="flex gap-1">
+                <button 
+                  onClick={() => handleAdjustBodyWeight(-1)}
+                  disabled={!myPlayer || (myPlayer.bodyWeightMarkers ?? 3) <= 0}
+                  className="bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white px-2 py-0.5 rounded text-[10px] font-bold"
+                  title="微调位移 -1"
+                >
+                  -1 格
+                </button>
+                <button 
+                  onClick={() => handleAdjustBodyWeight(1)}
+                  disabled={!myPlayer || (myPlayer.bodyWeightMarkers ?? 3) <= 0}
+                  className="bg-gray-700 hover:bg-gray-600 disabled:opacity-30 text-white px-2 py-0.5 rounded text-[10px] font-bold"
+                  title="微调位移 +1"
+                >
+                  +1 格
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 mt-1">
             {/* 骰子按钮 */}
           <button
             onClick={handleDiceMove}

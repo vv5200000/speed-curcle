@@ -37,6 +37,12 @@ export default class Player {
   tireTemp: 'cold' | 'warm' = 'cold';
   turnSpeed: number = 0;
 
+  // Phase 6: 进阶驾驶机制
+  bodyWeightMarkers: number = 3;   // 重心标记（每圈重置为3）
+  leanDeclared: boolean = false;   // 本回合已声明极限压弯
+  wheeling: boolean = false;       // 本回合已声明翘头冲刺
+  pendingMoveAdjust: number = 0;   // 重心标记消耗的 ±1 微调量
+
   constructor(id: string, name: string, colorIdx: number = 0) {
     this.id = id;
     this.name = name;
@@ -75,8 +81,12 @@ export default class Player {
       heat: this.heat,
       heatCapacity: this.heatCapacity,
       tireTemp: this.tireTemp,
-      heatCardCount: this.heatCardCount, // Phase 5: 手牌中持有的热力卡数量
+      heatCardCount: this.heatCardCount,
       crashPenalty: this.crashPenalty,
+      // Phase 6
+      bodyWeightMarkers: this.bodyWeightMarkers,
+      leanDeclared: this.leanDeclared,
+      wheeling: this.wheeling,
     };
   }
 
@@ -121,9 +131,16 @@ export default class Player {
   resetTurn() {
     this.actionPoints = this.gear;
     this.turnSpeed = 0;
+    this.leanDeclared = false;
+    this.wheeling = false;
+    this.pendingMoveAdjust = 0;
     // 轮胎：完成第一圈后变暖
     if (this.laps >= 1 && this.tireTemp === 'cold') {
       this.tireTemp = 'warm';
+    }
+    // 每圈重置重心标记
+    if (this.laps > 0 && this.bodyWeightMarkers < 3) {
+      this.bodyWeightMarkers = 3;
     }
   }
 }

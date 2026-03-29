@@ -21,6 +21,10 @@ export interface UseSinglePlayer {
   endTurn: () => void;
   changeGear: (targetGear: number) => void;
   defendAttack: (cardId: string) => void;
+  // Phase 6
+  declareLean: () => void;
+  declareWheelie: () => void;
+  adjustBodyWeight: (direction: 1 | -1) => void;
   isAiTurn: boolean;
 }
 
@@ -161,6 +165,42 @@ export function useSinglePlayer(): UseSinglePlayer {
     syncState();
   }, [addMessage, syncState]);
 
+  // Phase 6.1: 极限压弯
+  const declareLean = useCallback(() => {
+    if (!globalGameInstance) return;
+    const result = (globalGameInstance as any).declareLean('player');
+    if (result.ok) {
+      addMessage(`🏍️ 你声明了极限压弯！${result.blindCard ? `盲抽到 +${result.blindCard.value} 速度` : ''}`);
+    } else {
+      addMessage(`❗ ${result.error}`);
+    }
+    syncState();
+  }, [addMessage, syncState]);
+
+  // Phase 6.2: 翘头冲刺
+  const declareWheelie = useCallback(() => {
+    if (!globalGameInstance) return;
+    const result = (globalGameInstance as any).declareWheelie('player');
+    if (result.ok) {
+      addMessage(`💥 翘头冲刺启动！本回合移动力全面提升！`);
+    } else {
+      addMessage(`❗ ${result.error}`);
+    }
+    syncState();
+  }, [addMessage, syncState]);
+
+  // Phase 6.3: 重心微调
+  const adjustBodyWeight = useCallback((direction: 1 | -1) => {
+    if (!globalGameInstance) return;
+    const result = (globalGameInstance as any).adjustBodyWeight('player', direction);
+    if (result.ok) {
+      addMessage(`⚖️ 消耗重心标记，预先微调位移 ${direction > 0 ? '+1' : '-1'} 格`);
+    } else {
+      addMessage(`❗ ${result.error}`);
+    }
+    syncState();
+  }, [addMessage, syncState]);
+
   // AI 行动
   const runAiAction = useCallback(() => {
     if (!globalGameInstance) return;
@@ -243,6 +283,9 @@ export function useSinglePlayer(): UseSinglePlayer {
     endTurn,
     changeGear,
     defendAttack,
+    declareLean,
+    declareWheelie,
+    adjustBodyWeight,
     isAiTurn,
   };
 }

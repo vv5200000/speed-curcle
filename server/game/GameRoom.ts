@@ -239,26 +239,38 @@ export class GameRoom {
     const clampedSteps = Math.max(-3, Math.min(10, steps));
 
     const oldPos = player.position;
-    let newPos   = oldPos + clampedSteps;
+    // Phase 6.2: 翘头冲刺 — 移动步数中每格 +1（直道专属）
+    let wheelieBonus = 0;
+    if (player.wheeling && clampedSteps > 0) {
+      wheelieBonus = clampedSteps; // 每格 +1 = 总步数翻倍加 bonus
+    }
+    const effectiveSteps = clampedSteps + wheelieBonus;
+    let newPos = oldPos + effectiveSteps;
     let lapCompleted = false;
     let heatAdded = 0;
     let crashed = false;
 
     // ── 检查弯道超速 ──
-    if (clampedSteps > 0) {
+    if (effectiveSteps > 0) {
       let checkPos = oldPos;
-      for (let i = 1; i <= clampedSteps; i++) {
+      for (let i = 1; i <= effectiveSteps; i++) {
         checkPos += 1;
         if (checkPos >= TRACK_LENGTH) checkPos %= TRACK_LENGTH;
         const cell = TRACK[checkPos] as any;
         if (cell.type === 'corner') {
           const limit = cell.speedLimit || 4;
-          const effectiveLimit = player.tireTemp === 'cold' ? limit - 1 : limit;
+          // Phase 6.1: 极限压弯提升限速 +2
+          const leanBonus = player.leanDeclared ? 2 : 0;
+          // 冷胎降低限速 -1
+          const effectiveLimit = (player.tireTemp === 'cold' ? limit - 1 : limit) + leanBonus;
           if (player.turnSpeed > effectiveLimit) {
             const limitExceeded = player.turnSpeed - effectiveLimit;
-            // 档位倍率：1档:x0, 2:x1, 3:x1, 4:x2, 5:x2, 6:x3
             const mult = player.gear >= 6 ? 3 : player.gear >= 4 ? 2 : player.gear >= 2 ? 1 : 0;
             heatAdded += limitExceeded * mult;
+          }
+          // Phase 6.2: 翘头冲刺进入弯道 → 爆缸加倍
+          if (player.wheeling) {
+            heatAdded = heatAdded * 2 + 2; // 严重惩罚
           }
         }
       }
@@ -298,9 +310,9 @@ export class GameRoom {
     }
 
     // 处理圈数 (只有在未爆缸且前进跨越终点时才算完成一圈)
-    if (!crashed && oldPos + clampedSteps >= TRACK_LENGTH && clampedSteps > 0) {
-      const lapsGained = Math.floor((oldPos + clampedSteps) / TRACK_LENGTH);
-      newPos = (oldPos + clampedSteps) % TRACK_LENGTH;
+    if (!crashed && oldPos + effectiveSteps >= TRACK_LENGTH && effectiveSteps > 0) {
+      const lapsGained = Math.floor((oldPos + effectiveSteps) / TRACK_LENGTH);
+      newPos = (oldPos + effectiveSteps) % TRACK_LENGTH;
       player.laps += lapsGained;
       lapCompleted = true;
 
@@ -311,24 +323,40 @@ export class GameRoom {
     // 后退越界时限制在 0
     if (newPos < 0) newPos = 0;
 
+    // Phase 6.3: 应用重心标记微调
+    if (!crashed && player.pendingMoveAdjust !== 0) {
+      newPos = Math.max(0, (newPos + player.pendingMoveAdjust) % TRACK_LENGTH);
+      player.pendingMoveAdjust = 0;
+    }
+
     // Phase 5: 尾流系统 (Slipstream) — GDD 标准：+2格免费移动，不计入过弯热量
     let slipstream = false;
     let slipstreamTargetId: string | undefined;
     let slipstreamBonus = 0;
+    let slingshotCooled = false;
 
-    if (clampedSteps > 0 && !crashed) {
+    if (effectiveSteps > 0 && !crashed) {
+      let overtakenCount = 0;
       for (const [id, target] of this.players.entries()) {
         if (id === playerId || target.finished) continue;
         const dist = (target.position - newPos + TRACK_LENGTH) % TRACK_LENGTH;
         if (dist === 1 || dist === 2) {
           slipstream = true;
           slipstreamTargetId = id;
-          // GDD 标准：额外 +2 格移动，不触发弯道热量结算
           slipstreamBonus = 2;
           const bonusPos = (newPos + slipstreamBonus) % TRACK_LENGTH;
           newPos = bonusPos;
           break;
         }
+        // 统计被超越的车辆（新位置超过目标位置）
+        if (newPos > target.position && oldPos <= target.position) {
+          overtakenCount++;
+        }
+      }
+      // Phase 6.5: 钻车缝奖励 — 超越 ≥2 辆时冷却1张热力卡
+      if (overtakenCount >= 2 && player.heatCardCount > 0) {
+        player.coolHeatCards(1);
+        slingshotCooled = true;
       }
     }
 
@@ -385,12 +413,23 @@ export class GameRoom {
     if (diff > 1) {
       heatCost = diff - 1; // 跳档惩罚
     }
+    // Phase 6.4: 爆缸后的换挡惩罚
+    if (player.crashPenalty) {
+      if (targetGear > player.gear) {
+        heatCost += 1; // 爆缸后尝试升档需额外支付 1 热量
+      }
+    }
 
     if (player.heat + heatCost > player.heatCapacity) {
-      return { ok: false, error: '热量槽不足以支持跳步换挡' };
+      return { ok: false, error: '热量槽不足' };
     }
 
     player.gear = targetGear;
+    // 如果是爆缸后首次操作换档，解除惩罚状态
+    if (player.crashPenalty) {
+      player.crashPenalty = false;
+    }
+    
     player.heat += heatCost;
     player.actionPoints = targetGear; // 换挡时将行动点设为新档位对应的值
 
@@ -681,6 +720,71 @@ export class GameRoom {
   }
 
   /**
+   * Phase 6.1: 声明极限压弯 (Lean/Knee Down)
+   * 效果：本次弯道限速 +2；代价：从牌库顶盲抽1张类型为 move 的卡，加入本回合移动力
+   */
+  declareLean(playerId: string): { ok: boolean; blindCard?: any; error?: string } {
+    const player = this.players.get(playerId);
+    if (!player) return { ok: false, error: '玩家不存在' };
+
+    // 只能在临近弯道时使用（当前格子或下一格是弯道）
+    const ahead = TRACK[(player.position + 1) % TRACK_LENGTH];
+    const current = TRACK[player.position];
+    if (current.type !== 'corner' && ahead.type !== 'corner') {
+      return { ok: false, error: '只能在弯道或接近弯道时使用极限压弯' };
+    }
+    if (player.leanDeclared) return { ok: false, error: '本回合已使用极限压弯' };
+
+    player.leanDeclared = true;
+
+    // 盲抽1张牌（当作压力卡）—— 抽到即加入本回合移动速度
+    const blindCard = this.deck?.draw() ?? null;
+    if (blindCard && blindCard.value > 0) {
+      player.turnSpeed += blindCard.value;
+    }
+    // 盲抽的牌直接进弃牌堆（一次性结算）
+    if (blindCard && this.deck) this.deck.discard(blindCard);
+
+    return { ok: true, blindCard };
+  }
+
+  /**
+   * Phase 6.2: 声明翘头冲刺 (Wheelie)
+   * 条件：3档以上 + 当前格子是直道
+   * 效果：本回合所有移动卡 +1 步；
+   * 限制：本回合结束时不能停在弯道，否则爆缸
+   */
+  declareWheelie(playerId: string): { ok: boolean; error?: string } {
+    const player = this.players.get(playerId);
+    if (!player) return { ok: false, error: '玩家不存在' };
+    if (player.gear < 3) return { ok: false, error: '翘头冲刺需要至少 3 档' };
+    const currentCell = TRACK[player.position];
+    if (currentCell.type !== 'straight') {
+      return { ok: false, error: '翘头冲刺只能在直道发动' };
+    }
+    if (player.wheeling) return { ok: false, error: '本回合已使用翘头冲刺' };
+
+    player.wheeling = true;
+    return { ok: true };
+  }
+
+  /**
+   * Phase 6.3: 消耗重心标记微调移动
+   * direction: +1 或 -1
+   */
+  adjustBodyWeight(playerId: string, direction: 1 | -1): { ok: boolean; markersLeft?: number; error?: string } {
+    const player = this.players.get(playerId);
+    if (!player) return { ok: false, error: '玩家不存在' };
+    if (player.bodyWeightMarkers <= 0) return { ok: false, error: '重心标记已用尽' };
+    if (direction !== 1 && direction !== -1) return { ok: false, error: '方向必须为 +1 或 -1' };
+
+    player.bodyWeightMarkers -= 1;
+    player.pendingMoveAdjust += direction;
+
+    return { ok: true, markersLeft: player.bodyWeightMarkers };
+  }
+
+  /**
    * 判断游戏是否结束（所有玩家均完赛，或只剩最后一人未完赛）
    */
   isGameOver() {
@@ -690,4 +794,3 @@ export class GameRoom {
       (this.players.size > 1 && unfinished.length <= 1);
   }
 }
-

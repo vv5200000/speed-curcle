@@ -93,6 +93,13 @@ export interface PublicPlayer {
   heat: number;
   heatCapacity: number;
   tireTemp: 'cold' | 'warm';
+  heatCardCount: number; // 手牌中热力卡的数量
+  crashPenalty: boolean; // 是否处于爆缸后的换挡惩罚状态
+
+  // Phase 6
+  bodyWeightMarkers?: number;
+  leanDeclared?: boolean;
+  wheeling?: boolean;
 }
 
 /** 玩家私有信息（仅发给本人） */
