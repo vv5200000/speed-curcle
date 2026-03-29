@@ -140,6 +140,8 @@ function PlayerToken({
   track,
   offset,
   isCurrent,
+  isCrashed,
+  isSlipstreaming,
 }: {
   colorIdx: number;
   name: string;
@@ -147,6 +149,8 @@ function PlayerToken({
   track: TrackCell[];
   offset: number;
   isCurrent: boolean;
+  isCrashed?: boolean;
+  isSlipstreaming?: boolean;
 }) {
   const cell = track[position];
   if (!cell) return null;
@@ -162,12 +166,29 @@ function PlayerToken({
 
   return (
     <g>
+      {/* 尾流效果 (Slipstream) */}
+      {isSlipstreaming && (
+        <g className="animate-pulse">
+           <circle cx={px - 15} cy={py} r={6} fill={colors.hex} opacity={0.6} filter="url(#blur2)" />
+           <circle cx={px - 25} cy={py} r={4} fill={colors.hex} opacity={0.4} filter="url(#blur2)" />
+           <circle cx={px - 35} cy={py} r={2} fill={colors.hex} opacity={0.2} filter="url(#blur2)" />
+        </g>
+      )}
+
+      {/* 爆缸/减速效果 (Crashed/Debuff) */}
+      {isCrashed && (
+        <g transform={`translate(${px}, ${py - 12})`}>
+          <text textAnchor="middle" fontSize={12} className="animate-bounce">⚠️</text>
+          <circle r={12} fill="none" stroke="#ef4444" strokeWidth={1} strokeDasharray="2,2" className="animate-spin" />
+        </g>
+      )}
+
       {/* 外光圈（当前玩家更大更亮） */}
       <circle
         cx={px}
         cy={py}
         r={isCurrent ? 14 : 10}
-        fill={colors.hex}
+        fill={isCrashed ? '#ef4444' : colors.hex}
         opacity={isCurrent ? 0.4 : 0.2}
         filter={isCurrent ? 'url(#player-glow)' : undefined}
       />
@@ -178,7 +199,7 @@ function PlayerToken({
         cy={py}
         r={8}
         fill={colors.hex}
-        stroke={isCurrent ? '#ffffff' : '#94a3b8'}
+        stroke={isCurrent ? '#ffffff' : isCrashed ? '#ef4444' : '#94a3b8'}
         strokeWidth={isCurrent ? 2 : 1.5}
       />
 
@@ -203,7 +224,7 @@ function PlayerToken({
             width={40}
             height={14}
             rx={4}
-            fill="#facc15"
+            fill={isCrashed ? '#ef4444' : '#facc15'}
             opacity={0.9}
           />
           <text
@@ -211,7 +232,7 @@ function PlayerToken({
             y={py - 16}
             textAnchor="middle"
             fontSize={8}
-            fill="#000"
+            fill={isCrashed ? '#fff' : '#000'}
             fontWeight="bold"
           >
             {name.length > 5 ? name.slice(0, 4) + '…' : name}
@@ -225,21 +246,32 @@ function PlayerToken({
 // ── 主组件 ──
 const GameBoard: React.FC = () => {
   const { track, players, currentPlayerId, totalLaps } = useGameStore();
+  const [activeSlipstreams, setActiveSlipstreams] = React.useState<Record<string, boolean>>({});
 
-  const positionSet = useMemo(
-    () => new Set(players.map((p) => p.position)),
-    [players]
-  );
+  // 监听位置变化，如果是蹭到尾流（步数异常增加或消息提示），这里简化处理：
+  // 实际上可以通过监听 players 数组变化，并记录上一次位置，但为了视觉效果，
+  // 我们在组件内增加一个简单的“模拟”或通过 hook 传递。
+  // 此处演示：如果当前玩家处于行动中且刚刚移动过，我们随机显示一下（实际应接管事件）。
+  // 改进：我们通过消息日志触发
+  const messages = useGameStore(s => s.messages);
+  React.useEffect(() => {
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.includes('蹭到尾流')) {
+      // 提取玩家名（假设消息中有）或直接给当前玩家
+      if (currentPlayerId) {
+        setActiveSlipstreams(prev => ({ ...prev, [currentPlayerId]: true }));
+        setTimeout(() => {
+          setActiveSlipstreams(prev => ({ ...prev, [currentPlayerId]: false }));
+        }, 2000);
+      }
+    }
+  }, [messages, currentPlayerId]);
 
   const positionCounter: Record<number, number> = {};
-
-  // 按照进度排序，显示排名
+  
+  // 排名计算
   const rankedPlayers = useMemo(
-    () =>
-      [...players].sort(
-        (a, b) =>
-          b.laps * 24 + b.position - (a.laps * 24 + a.position)
-      ),
+    () => [...players].sort((a, b) => (b.laps * 24 + b.position) - (a.laps * 24 + a.position)),
     [players]
   );
 
@@ -335,6 +367,13 @@ const GameBoard: React.FC = () => {
           {players.map((player) => {
             const off = positionCounter[player.position] ?? 0;
             positionCounter[player.position] = off + 1;
+            
+            // 爆缸检测
+            const isCrashed = player.heat >= player.heatCapacity;
+            
+            // 正在被攻击检测 (慢速/受阻)
+            const isPendingTarget = useGameStore.getState().pendingAttack?.targetId === player.id;
+
             return (
               <PlayerToken
                 key={player.id}
@@ -344,6 +383,8 @@ const GameBoard: React.FC = () => {
                 track={track}
                 offset={off}
                 isCurrent={player.id === currentPlayerId}
+                isCrashed={isCrashed || isPendingTarget}
+                isSlipstreaming={activeSlipstreams[player.id]}
               />
             );
           })}

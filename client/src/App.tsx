@@ -15,6 +15,7 @@ import GameBoard    from './components/GameBoard';
 import CardHand     from './components/CardHand';
 import PlayerStatus from './components/PlayerStatus';
 import GameRulesModal from './components/GameRulesModal';
+import DefenseOverlay from './components/DefenseOverlay';
 
 // 根据消息内容决定颜色
 function getMessageColor(msg: string): string {
@@ -173,6 +174,9 @@ const App: React.FC = () => {
 
       {/* 规则说明弹窗 */}
       <GameRulesModal isOpen={isRulesOpen} onClose={() => setIsRulesOpen(false)} />
+
+      {/* 防守弹窗 (Phase 4) */}
+      <DefenseOverlay />
     </div>
   );
 };

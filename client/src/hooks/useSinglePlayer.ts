@@ -154,7 +154,7 @@ export function useSinglePlayer(): UseSinglePlayer {
     if (!globalGameInstance) return;
     const result = globalGameInstance.defendAttack('player', cardId);
     if (result.ok) {
-      addMessage(`🛡️ 防御成功！抵消了攻击`);
+      addMessage(`🛡️ 防御成功！你开启了护盾并抵消了攻击！`);
     } else {
       addMessage(`❗ 防御失败: ${result.error}`);
     }

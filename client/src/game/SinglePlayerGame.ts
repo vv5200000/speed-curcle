@@ -514,6 +514,19 @@ export class SinglePlayerGame {
         }, 5000);
 
         effect = { ...effect, targetId, expireAt, pending: true };
+
+        // Phase 4: AI 防御逻辑
+        if (target.isAI) {
+          const delay = 1500 + Math.random() * 2000; // 1.5s - 3.5s 延迟
+          setTimeout(() => {
+            if (this.pendingAttack && this.pendingAttack.targetId === target.id) {
+              const shieldCard = target.hand.find(c => c.type === 'shield');
+              if (shieldCard && Math.random() < 0.7) { // 70% 概率防御
+                this.defendAttack(target.id, shieldCard.id);
+              }
+            }
+          }, delay);
+        }
         break;
       }
       case 'shortcut': {
