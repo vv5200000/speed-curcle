@@ -261,10 +261,59 @@ io.on('connection', (socket) => {
         effect:   result.effect,
       });
 
+      // 如果有挂起的攻击，广播通知
+      if (result.effect.pending) {
+        io.to(roomId).emit('attack-pending', {
+          attackerId: socket.id,
+          targetId:   result.effect.targetId,
+          cardId,
+          expireAt:   result.effect.expireAt,
+        });
+
+        // 绑定超时自动广播逻辑
+        // 我们需要一种方式让 room 超时后通知这里，或者在这里再次设置一个同步计时器
+        setTimeout(() => {
+          const freshRoom = rooms.get(roomId);
+          if (freshRoom && !freshRoom.pendingAttack && freshRoom.phase === PHASE.PLAYING) {
+             // 攻击已结算或被防御，此处通过状态检查
+             broadcastGameState(freshRoom);
+             sendPrivateStates(freshRoom);
+          }
+        }, 5100);
+      }
+
       checkGameOver(room);
       cb?.({ ok: true, effect: result.effect });
     } catch (err) {
       console.error('[play-card error]', err);
+      cb?.({ ok: false, error: '服务器内部错误' });
+    }
+  });
+
+  // ── 防御攻击 (Phase 4) ──────────────────────────
+  socket.on('defend-attack', ({ cardId }, cb) => {
+    try {
+      const roomId = playerRoom.get(socket.id);
+      const room   = rooms.get(roomId);
+      if (!room) return cb?.({ ok: false, error: '房间不存在' });
+
+      const result = room.defendAttack(socket.id, cardId);
+      if (!result.ok) {
+        return cb?.({ ok: false, error: result.error });
+      }
+
+      broadcastGameState(room);
+      sendPrivateStates(room);
+
+      // 广播防御成功
+      io.to(roomId).emit('card-played', {
+        playerId: socket.id,
+        effect:   { type: 'shield', actorId: socket.id, targetId: result.attackerId, blocked: true },
+      });
+
+      cb?.({ ok: true });
+    } catch (err) {
+      console.error('[defend-attack error]', err);
       cb?.({ ok: false, error: '服务器内部错误' });
     }
   });

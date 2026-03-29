@@ -147,6 +147,14 @@ export class SinglePlayerGame {
   totalLaps = TOTAL_LAPS;
   track = TRACK;
   finishRank = 0;
+  pendingAttack: {
+    attackerId: string;
+    targetId: string;
+    cardId: string;
+    expireAt: number;
+    card: any;
+  } | null = null;
+  pendingAttackTimer: any = null;
 
   // 回调
   onStateChange?: () => void;
@@ -473,19 +481,39 @@ export class SinglePlayerGame {
         const target = this.players.find(p => p.id === targetId);
         if (!target) {
           player.hand.push(card);
-          player.actionPoints += 1; // 失败退还
+          player.actionPoints += 1;
           return { ok: false, error: '目标玩家不存在' };
         }
-        if (target.shielded) {
-          target.shielded = false;
-          effect.blocked = true;
-          effect.targetId = targetId;
-        } else {
-          const newPos = Math.max(0, target.position + card.value);
-          target.position = newPos;
-          effect.targetId = targetId;
-          effect.newPosition = newPos;
+
+        // Phase 4: 射程判定 (5格)
+        const trackDist = (target.position - player.position + TRACK_LENGTH) % TRACK_LENGTH;
+        const dist = Math.min(trackDist, (player.position - target.position + TRACK_LENGTH) % TRACK_LENGTH);
+        
+        if (dist > 5) {
+          player.hand.push(card);
+          player.actionPoints += 1;
+          return { ok: false, error: '目标过远，超出射程 (5格)' };
         }
+
+        // Phase 4: 防守时间窗口 (5s)
+        if (this.pendingAttackTimer) {
+          clearTimeout(this.pendingAttackTimer);
+        }
+
+        const expireAt = Date.now() + 5000;
+        this.pendingAttack = {
+          attackerId: playerId,
+          targetId: targetId!,
+          cardId: card.id,
+          card: card,
+          expireAt
+        };
+
+        this.pendingAttackTimer = setTimeout(() => {
+          this.resolvePendingAttack();
+        }, 5000);
+
+        effect = { ...effect, targetId, expireAt, pending: true };
         break;
       }
       case 'shortcut': {
@@ -509,6 +537,61 @@ export class SinglePlayerGame {
       if (TRACK[idx].type === 'corner') return idx;
     }
     return null;
+  }
+
+  // Phase 4: 防御挂起的攻击
+  defendAttack(playerId: string, cardId: string) {
+    if (!this.pendingAttack || this.pendingAttack.targetId !== playerId) {
+      return { ok: false, error: '当前没有针对你的攻击' };
+    }
+
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) return { ok: false, error: '玩家不存在' };
+
+    const cardIdx = player.hand.findIndex(c => c.id === cardId);
+    if (cardIdx === -1) return { ok: false, error: '手牌中没有该卡牌' };
+
+    const card = player.hand[cardIdx];
+    if (card.type !== 'shield') {
+      return { ok: false, error: '请使用护盾卡进行防御' };
+    }
+
+    // 移除护盾卡
+    player.hand.splice(cardIdx, 1);
+
+    // 成功防御
+    if (this.pendingAttackTimer) {
+      clearTimeout(this.pendingAttackTimer);
+      this.pendingAttackTimer = null;
+    }
+
+    this.pendingAttack = null;
+    this.deck.discardCard(card);
+    this._notify();
+
+    return { ok: true };
+  }
+
+  // Phase 4: 结算挂起的攻击
+  resolvePendingAttack() {
+    if (!this.pendingAttack) return;
+
+    if (this.pendingAttackTimer) {
+      clearTimeout(this.pendingAttackTimer);
+      this.pendingAttackTimer = null;
+    }
+
+    const { targetId, card } = this.pendingAttack;
+    const target = this.players.find(p => p.id === targetId);
+
+    if (target) {
+      const slowSteps = card.value;
+      const newPos = Math.max(0, target.position + slowSteps);
+      target.position = newPos;
+    }
+
+    this.pendingAttack = null;
+    this._notify();
   }
 
   // 结束回合
@@ -580,6 +663,12 @@ export class SinglePlayerGame {
       track: this.track,
       totalLaps: this.totalLaps,
       deckStats: { drawPile: this.deck.cards.length, discardPile: this.deck.discard.length },
+      pendingAttack: this.pendingAttack ? {
+        attackerId: this.pendingAttack.attackerId,
+        targetId: this.pendingAttack.targetId,
+        cardId: this.pendingAttack.cardId,
+        expireAt: this.pendingAttack.expireAt
+      } : null,
     };
   }
 

@@ -20,6 +20,7 @@ export interface UseSinglePlayer {
   playCard: (cardId: string, targetId?: string) => void;
   endTurn: () => void;
   changeGear: (targetGear: number) => void;
+  defendAttack: (cardId: string) => void;
   isAiTurn: boolean;
 }
 
@@ -38,6 +39,7 @@ export function useSinglePlayer(): UseSinglePlayer {
     addMessage,
     reset,
     currentPlayerId,
+    pendingAttack,
   } = useGameStore();
 
   // 同步状态到 store
@@ -147,6 +149,18 @@ export function useSinglePlayer(): UseSinglePlayer {
     syncState();
   }, [addMessage, syncState]);
 
+  // 人类玩家防御
+  const defendAttack = useCallback((cardId: string) => {
+    if (!globalGameInstance) return;
+    const result = globalGameInstance.defendAttack('player', cardId);
+    if (result.ok) {
+      addMessage(`🛡️ 防御成功！抵消了攻击`);
+    } else {
+      addMessage(`❗ 防御失败: ${result.error}`);
+    }
+    syncState();
+  }, [addMessage, syncState]);
+
   // AI 行动
   const runAiAction = useCallback(() => {
     if (!globalGameInstance) return;
@@ -194,6 +208,30 @@ export function useSinglePlayer(): UseSinglePlayer {
     return () => clearTimeout(timer);
   }, [currentPlayerId, isSinglePlayer, runAiAction]);
 
+  // 监听挂起的攻击（AI 自动防御）
+  useEffect(() => {
+    if (!isSinglePlayer || !globalGameInstance || !pendingAttack) return;
+
+    const targetId = pendingAttack.targetId;
+    const target = globalGameInstance.players.find(p => p.id === targetId);
+
+    if (target?.isAI) {
+      // AI 尝试防御
+      const shieldCard = target.hand.find(c => c.type === 'shield');
+      if (shieldCard) {
+        // 随机延迟 1-3.5 秒后防御
+        const delay = 1000 + Math.random() * 2500;
+        const timer = setTimeout(() => {
+          if (globalGameInstance && globalGameInstance.pendingAttack?.targetId === targetId) {
+            globalGameInstance.defendAttack(targetId, shieldCard.id);
+            addMessage(`🛡️ ${target.name} 使用了护盾，成功防御！`);
+          }
+        }, delay);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [pendingAttack, isSinglePlayer, addMessage]);
+
   return {
     isSinglePlayer,
     aiCount,
@@ -204,6 +242,7 @@ export function useSinglePlayer(): UseSinglePlayer {
     playCard,
     endTurn,
     changeGear,
+    defendAttack,
     isAiTurn,
   };
 }

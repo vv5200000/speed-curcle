@@ -31,7 +31,7 @@ const CardHand: React.FC = () => {
   const socket       = useSocket();
   const singlePlayer = useSinglePlayer();
 
-  const { myHand, mySocketId, currentPlayerId, players } = useGameStore();
+  const { myHand, mySocketId, currentPlayerId, players, pendingAttack } = useGameStore();
 
   const isSinglePlayerMode = singlePlayer.isSinglePlayer;
   const playCardAction = isSinglePlayerMode
@@ -46,6 +46,9 @@ const CardHand: React.FC = () => {
   const changeGearAction = isSinglePlayerMode
     ? singlePlayer.changeGear
     : (targetGear: number) => socket.changeGear({ targetGear });
+  const defendAttackAction = isSinglePlayerMode
+    ? singlePlayer.defendAttack
+    : (cardId: string) => (socket as any).defendAttack({ cardId });
 
   const isMyTurn = isSinglePlayerMode
     ? currentPlayerId === 'player'
@@ -103,8 +106,34 @@ const CardHand: React.FC = () => {
     setTimeout(() => setFeedback(''), 2800);
   };
 
+  // ── 防御窗口逻辑 (Phase 4) ──
+  const [defendTimer, setDefendTimer] = useState(0);
+  const isTargeted = pendingAttack?.targetId === humanPlayerId;
+
+  useEffect(() => {
+    if (!isTargeted || !pendingAttack) {
+      setDefendTimer(0);
+      return;
+    }
+
+    const updateTimer = () => {
+      const remaining = Math.max(0, Math.ceil((pendingAttack.expireAt - Date.now()) / 1000));
+      setDefendTimer(remaining);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 500);
+    return () => clearInterval(interval);
+  }, [isTargeted, pendingAttack]);
+
   // ── 处理打牌 ──
   const handlePlayCard = async (card: Card) => {
+    // 防御状态下点击护盾
+    if (isTargeted && card.type === 'shield') {
+      defendAttackAction(card.id);
+      return;
+    }
+
     if (!canAct) return;
     if (card.type === 'slow') {
       setPendingCard(card);
@@ -341,12 +370,32 @@ const CardHand: React.FC = () => {
                 );
               })}
 
-            <button
-              onClick={() => { setTargetSelectVisible(false); setPendingCard(null); }}
-              className="w-full text-gray-500 hover:text-gray-300 text-xs mt-1 py-1 rounded-lg hover:bg-gray-800 transition"
-            >
-              取消
-            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 防御预警 Overlay (Phase 4) */}
+      {isTargeted && pendingAttack && (
+        <div className="fixed inset-0 pointer-events-none flex flex-col items-center justify-center z-[100] animate-pulse">
+          <div className="bg-red-900/40 border-4 border-red-600 rounded-full px-8 py-4 pointer-events-auto backdrop-blur-md shadow-[0_0_30px_#ef4444]">
+            <div className="text-white font-black text-2xl tracking-tighter text-center">
+              ⚠️ 遭受攻击! ⚠️
+            </div>
+            <div className="text-red-200 text-sm font-bold text-center mt-1">
+              打出护盾卡进行防御
+            </div>
+            <div className="text-white font-mono text-5xl text-center mt-2">
+              {defendTimer}s
+            </div>
+            <div className="w-full bg-gray-900 rounded-full h-2 mt-4 overflow-hidden border border-red-900">
+               <div 
+                 className="bg-red-500 h-full transition-all duration-500" 
+                 style={{ width: `${(defendTimer / 5) * 100}%` }}
+               />
+            </div>
+          </div>
+          <div className="mt-8 text-white text-xs font-bold bg-black/60 px-4 py-2 rounded-lg pointer-events-none">
+            {players.find(p => p.id === pendingAttack.attackerId)?.name} 正在对你发起冲击...
           </div>
         </div>
       )}

@@ -436,18 +436,36 @@ export class GameRoom {
           player.addCard(card);
           return { ok: false, error: '目标玩家不存在' };
         }
-        if (target.shielded) {
-          // 护盾抵消效果
-          target.shielded = false;
-          effect.blocked  = true;
-          effect.targetId = targetId;
-        } else {
-          const slowSteps  = card.value; // 负数
-          let newPos = Math.max(0, target.position + slowSteps);
-          target.moveTo(newPos);
-          effect.targetId    = targetId;
-          effect.newPosition = newPos;
+
+        // Phase 4: 射程判定 (5格)
+        const trackDist = (target.position - player.position + TRACK_LENGTH) % TRACK_LENGTH;
+        const dist = Math.min(trackDist, (player.position - target.position + TRACK_LENGTH) % TRACK_LENGTH);
+        
+        if (dist > 5) {
+          player.addCard(card);
+          return { ok: false, error: '目标过远，超出射程 (5格)' };
         }
+
+        // Phase 4: 防守时间窗口 (5s)
+        if (this.pendingAttackTimer) {
+          clearTimeout(this.pendingAttackTimer);
+        }
+
+        const expireAt = Date.now() + 5000;
+        this.pendingAttack = {
+          attackerId: playerId,
+          targetId: targetId!,
+          cardId: card.id,
+          card: card,
+          expireAt
+        };
+
+        this.pendingAttackTimer = setTimeout(() => {
+          this.resolvePendingAttack();
+          // 需要在外部调用处处理广播，或者在这里触发回调
+        }, 5000);
+
+        effect = { ...effect, targetId, expireAt, pending: true };
         break;
       }
       case 'shortcut': {
@@ -527,6 +545,12 @@ export class GameRoom {
       track:            TRACK,
       totalLaps:        TOTAL_LAPS,
       deckStats:        this.deck ? this.deck.stats() : null,
+      pendingAttack:    this.pendingAttack ? {
+        attackerId: this.pendingAttack.attackerId,
+        targetId: this.pendingAttack.targetId,
+        cardId: this.pendingAttack.cardId,
+        expireAt: this.pendingAttack.expireAt
+      } : null,
     };
   }
 
@@ -569,6 +593,64 @@ export class GameRoom {
       if (TRACK[idx].type === 'corner') return idx;
     }
     return null;
+  }
+
+  /**
+   * Phase 4: 防御挂起的攻击
+   */
+  defendAttack(playerId: string, cardId: string) {
+    if (!this.pendingAttack || this.pendingAttack.targetId !== playerId) {
+      return { ok: false, error: '当前没有针对你的攻击' };
+    }
+
+    const player = this.players.get(playerId);
+    if (!player) return { ok: false, error: '玩家不存在' };
+
+    const card = player.removeCard(cardId);
+    if (!card || card.type !== 'shield') {
+      if (card) player.addCard(card);
+      return { ok: false, error: '请使用护盾卡进行防御' };
+    }
+
+    // 成功防御
+    if (this.pendingAttackTimer) {
+      clearTimeout(this.pendingAttackTimer);
+      this.pendingAttackTimer = null;
+    }
+
+    const attackerId = this.pendingAttack.attackerId;
+    this.pendingAttack = null;
+    
+    // 护盾打出后进入弃牌堆
+    this.deck!.discard(card);
+
+    return { ok: true, attackerId };
+  }
+
+  /**
+   * Phase 4: 结算挂起的攻击
+   */
+  resolvePendingAttack() {
+    if (!this.pendingAttack) return null;
+
+    if (this.pendingAttackTimer) {
+      clearTimeout(this.pendingAttackTimer);
+      this.pendingAttackTimer = null;
+    }
+
+    const { targetId, card } = this.pendingAttack;
+    const target = this.players.get(targetId);
+    const result: any = { targetId, cardId: card.id };
+
+    if (target) {
+      const slowSteps = card.value;
+      const newPos = Math.max(0, target.position + slowSteps);
+      target.moveTo(newPos);
+      result.newPosition = newPos;
+    }
+
+    this.pendingAttack = null;
+    return result;
   }
 
   /**

@@ -54,6 +54,15 @@ export interface CardEffect {
   slipstreamTargetId?: string;   // Phase 4: 蹭到了谁的尾流
 }
 
+/*
+ * Phase 4: 多人竞技与策略 (DRAFT & COMBAT PvP Modules)
+ * - [/] 尾流 (Slipstream) UI 视觉表现 (残影拖尾动画)
+ * - [/] 战斗射程系统 (Card Range Logic)
+ * - [/] 防御响应 5s 窗口机制 (Blocking Defense Window)
+ * - [/] 单机模式 AI 挂起攻击响应机制 (AI Defense Simulation)
+ * - [ ] Debuff 视觉强化 (Slow/EMP Effect on Track)
+ */
+
 // ──────────────────────────────────────────────
 // 玩家相关
 // ──────────────────────────────────────────────

@@ -66,6 +66,14 @@ interface GameStore {
   isAiTurn: boolean;
   setIsAiTurn: (v: boolean) => void;
 
+  // ── 挂起的攻击 (Phase 4) ──
+  pendingAttack: {
+    attackerId: string;
+    targetId: string;
+    cardId: string;
+    expireAt: number;
+  } | null;
+
   // ── 消息日志 ──
   messages: string[];
   addMessage: (msg: string) => void;
@@ -104,6 +112,7 @@ const DEFAULT_STATE = {
   isSinglePlayer: false,
   aiCount: 2,
   isAiTurn: false,
+  pendingAttack: null,
 };
 
 // ──────────────────────────────────────────────
@@ -145,7 +154,9 @@ export const useGameStore = create<GameStore>((set) => ({
       deckStats:        state.deckStats,
       roomId:           state.roomId,
       roomName:         state.roomName,
+      pendingAttack:    state.pendingAttack,
     }),
+
 
   // ── 更新私有状态（含手牌） ──
   applyPrivateState: (state) =>
@@ -161,7 +172,9 @@ export const useGameStore = create<GameStore>((set) => ({
       deckStats:        state.deckStats,
       roomId:           state.roomId,
       roomName:         state.roomName,
+      pendingAttack:    state.pendingAttack,
     }),
+
 
   // ── 游戏结束 ──
   setGameOver: (rankings) => set({ gameOver: true, rankings }),
