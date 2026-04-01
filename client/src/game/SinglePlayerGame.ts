@@ -476,6 +476,46 @@ export class SinglePlayerGame {
     const isLeading = myProgress >= bestOpponentProgress;
     const isFarBehind = bestOpponentProgress - myProgress > 8;
 
+    // Phase 7 AI 驾驶策略：距离下一弯道检测
+    let distToCorner = 99;
+    for (let i = 1; i <= Math.max(10, player.gear * 2); i++) {
+      const cell = this.track[(player.position + i) % this.track.length] as any;
+      if (cell.type === 'corner') {
+        distToCorner = i;
+        break;
+      }
+    }
+
+    // 1. 进站/弯前防爆缸：主动降档
+    if (distToCorner <= 2 && player.gear >= 4) {
+      // 距离弯道 ≤2 时，若档位偏高，决定降档
+      let targetGear = Math.max(1, player.gear - 1);
+      if (distToCorner === 1) targetGear = Math.min(targetGear, 3);
+      // 调用换档（绕过“非玩家回合”限制）
+      this.changeGear(targetGear, player.id);
+    }
+
+    // 2. 长直道爆发：翘头冲刺
+    const currentCell = this.track[player.position] as any;
+    if (distToCorner > 4 && player.gear >= 3 && !player.wheeling && currentCell.type === 'straight') {
+      if (Math.random() < 0.6) {
+        this.declareWheelie(player.id);
+      }
+    }
+
+    // 3. 冒险：极限压弯
+    if (distToCorner <= 1 && player.gear >= 2 && !player.leanDeclared && !isLeading) {
+      // 处于落后状态时在弯前有概率放手一搏
+      if (Math.random() < 0.4) {
+        this.declareLean(player.id);
+      }
+    }
+
+    // 4. 重心微调（简单预测：如果有把握蹭到pit，或单纯概率发动）
+    if (player.bodyWeightMarkers > 0 && Math.random() < 0.3) {
+      this.adjustBodyWeight(player.id, Math.random() > 0.5 ? 1 : -1);
+    }
+
     // 按优先级评分选牌
     if (player.hand.length > 0 && Math.random() < 0.75) {
       // 分类手牌
@@ -816,9 +856,10 @@ export class SinglePlayerGame {
   }
 
   // 换挡
-  changeGear(targetGear: number): { ok: boolean; error?: string; gear?: number; heat?: number } {
-    const player = this.getCurrentPlayer();
-    if (!player || player.id !== 'player') return { ok: false, error: '不是你的回合' };
+  changeGear(targetGear: number, forcePlayerId?: string): { ok: boolean; error?: string; gear?: number; heat?: number } {
+    const player = forcePlayerId ? this.players.find(p => p.id === forcePlayerId) : this.getCurrentPlayer();
+    if (!player) return { ok: false, error: '当前无法换挡' };
+    if (!forcePlayerId && player.id !== 'player') return { ok: false, error: '不是你的回合' };
     if (targetGear < 1 || targetGear > 6) return { ok: false, error: '非法档位' };
 
     const diff = Math.abs(targetGear - player.gear);
@@ -847,6 +888,57 @@ export class SinglePlayerGame {
     
     this._notify();
     return { ok: true, gear: player.gear, heat: player.heat };
+  }
+
+  // Phase 6.1: 极限压弯 (Lean/Knee Down)
+  declareLean(playerId: string): { ok: boolean; blindCard?: any; error?: string } {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) return { ok: false, error: '玩家不存在' };
+
+    const ahead = this.track[(player.position + 1) % this.track.length];
+    const current = this.track[player.position];
+    if (current.type !== 'corner' && ahead.type !== 'corner') {
+      return { ok: false, error: '只能在弯道或接近弯道时使用极限压弯' };
+    }
+    if (player.leanDeclared) return { ok: false, error: '本回合已使用极限压弯' };
+
+    player.leanDeclared = true;
+    const blindCard = this.deck.draw();
+    if (blindCard && blindCard.value > 0) {
+      player.turnSpeed += blindCard.value;
+    }
+    if (blindCard) this.deck.discardCard(blindCard);
+
+    this._notify();
+    return { ok: true, blindCard };
+  }
+
+  // Phase 6.2: 翘头冲刺 (Wheelie)
+  declareWheelie(playerId: string): { ok: boolean; error?: string } {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) return { ok: false, error: '玩家不存在' };
+    if (player.gear < 3) return { ok: false, error: '翘头冲刺需要至少 3 档' };
+    const currentCell = this.track[player.position];
+    if (currentCell.type !== 'straight') return { ok: false, error: '翘头冲刺只能在直道发动' };
+    if (player.wheeling) return { ok: false, error: '本回合已使用翘头冲刺' };
+
+    player.wheeling = true;
+    this._notify();
+    return { ok: true };
+  }
+
+  // Phase 6.3: 重心微调 (Body Weight)
+  adjustBodyWeight(playerId: string, direction: 1 | -1): { ok: boolean; markersLeft?: number; error?: string } {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) return { ok: false, error: '玩家不存在' };
+    if (player.bodyWeightMarkers <= 0) return { ok: false, error: '重心标记已用尽' };
+    if (direction !== 1 && direction !== -1) return { ok: false, error: '方向必须为 +1 或 -1' };
+
+    player.bodyWeightMarkers -= 1;
+    player.pendingMoveAdjust += direction;
+
+    this._notify();
+    return { ok: true, markersLeft: player.bodyWeightMarkers };
   }
 }
 

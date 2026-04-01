@@ -102,3 +102,41 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ── Phase 7: 进阶动画反馈 ── */
+
+/* 爆缸颤动 */
+@keyframes svg-shake {
+  0% { transform: translate(1px, 1px) rotate(0deg); }
+  10% { transform: translate(-1px, -2px) rotate(-1deg); }
+  20% { transform: translate(-2px, 0px) rotate(1deg); }
+  30% { transform: translate(2px, 2px) rotate(0deg); }
+  40% { transform: translate(1px, -1px) rotate(1deg); }
+  50% { transform: translate(-1px, 2px) rotate(-1deg); }
+  60% { transform: translate(-2px, 1px) rotate(0deg); }
+  70% { transform: translate(2px, 1px) rotate(-1deg); }
+  80% { transform: translate(-1px, -1px) rotate(1deg); }
+  90% { transform: translate(1px, 2px) rotate(0deg); }
+  100% { transform: translate(1px, -2px) rotate(-1deg); }
+}
+.animate-svg-shake {
+  animation: svg-shake 0.4s cubic-bezier(.36,.07,.19,.97) infinite both;
+}
+
+/* 护盾光晕呼吸 */
+@keyframes shield-glow {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.15); }
+}
+.animate-shield-glow {
+  animation: shield-glow 2s ease-in-out infinite;
+}
+
+/* 压弯残影拖尾 */
+@keyframes lean-trail {
+  0% { opacity: 0.8; transform: skewX(-10deg) translateX(0); }
+  100% { opacity: 0; transform: skewX(-20deg) translateX(-15px); }
+}
+.animate-lean-trail {
+  animation: lean-trail 0.5s ease-out infinite;
+}

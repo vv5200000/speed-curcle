@@ -173,6 +173,9 @@ function PlayerToken({
   isCurrent,
   isCrashed,
   isSlipstreaming,
+  isShielded,
+  isWheeling,
+  isLeaning,
 }: {
   colorIdx: number;
   name: string;
@@ -182,6 +185,9 @@ function PlayerToken({
   isCurrent: boolean;
   isCrashed?: boolean;
   isSlipstreaming?: boolean;
+  isShielded?: boolean;
+  isWheeling?: boolean;
+  isLeaning?: boolean;
 }) {
   const cell = track[position];
   if (!cell) return null;
@@ -195,8 +201,13 @@ function PlayerToken({
   const px = cx + offX;
   const py = cy + offY;
 
+  // 根据特效状态决定附加类名
+  const crashClass = isCrashed ? 'animate-svg-shake' : '';
+  const wheelieClass = isWheeling ? '-rotate-12 origin-center' : '';
+  const leanClass = isLeaning ? 'skew-x-12' : '';
+
   return (
-    <g>
+    <g className={`${crashClass} ${wheelieClass} ${leanClass} transition-transform duration-300`} style={{ transformOrigin: `${px}px ${py}px` }}>
       {/* 尾流效果 (Slipstream) */}
       {isSlipstreaming && (
         <g className="animate-pulse">
@@ -211,6 +222,26 @@ function PlayerToken({
         <g transform={`translate(${px}, ${py - 12})`}>
           <text textAnchor="middle" fontSize={12} className="animate-bounce">⚠️</text>
           <circle r={12} fill="none" stroke="#ef4444" strokeWidth={1} strokeDasharray="2,2" className="animate-spin" />
+        </g>
+      )}
+
+      {/* 护盾光晕 (Shield) */}
+      {isShielded && (
+        <circle cx={px} cy={py} r={18} fill="none" stroke="#60a5fa" strokeWidth={2} className="animate-shield-glow" filter="url(#blur2)" />
+      )}
+
+      {/* 翘头拉烟 (Wheelie) */}
+      {isWheeling && (
+        <g className="animate-pulse opacity-60">
+           <circle cx={px - 14} cy={py + 10} r={4} fill="#94a3b8" filter="url(#blur2)" />
+           <circle cx={px - 22} cy={py + 14} r={6} fill="#64748b" filter="url(#blur2)" />
+        </g>
+      )}
+
+      {/* 极限压弯残影 (Lean) */}
+      {isLeaning && (
+        <g className="animate-lean-trail origin-center" style={{ transformOrigin: `${px}px ${py}px` }}>
+           <circle cx={px} cy={py} r={10} fill="#facc15" opacity={0.6} filter="url(#blur2)" />
         </g>
       )}
 
@@ -414,8 +445,8 @@ const GameBoard: React.FC = () => {
             const off = positionCounter[player.position] ?? 0;
             positionCounter[player.position] = off + 1;
             
-            // 爆缸检测
-            const isCrashed = player.heat >= player.heatCapacity;
+            // 爆缸检测（叠加 Phase 6 中的 crashPenalty）
+            const isCrashed = player.heat >= player.heatCapacity || player.crashPenalty;
             
             // 正在被攻击检测 (慢速/受阻)
             const isPendingTarget = useGameStore.getState().pendingAttack?.targetId === player.id;
@@ -431,6 +462,9 @@ const GameBoard: React.FC = () => {
                 isCurrent={player.id === currentPlayerId}
                 isCrashed={isCrashed || isPendingTarget}
                 isSlipstreaming={activeSlipstreams[player.id]}
+                isShielded={player.shielded}
+                isWheeling={player.wheeling}
+                isLeaning={player.leanDeclared}
               />
             );
           })}
