@@ -4,7 +4,8 @@
   "description": "Neon District Racing - Multiplayer Game Server",
   "main": "index.ts",
   "scripts": {
-    "start": "ts-node index.ts",
+    "build": "tsc",
+    "start": "NODE_ENV=production node dist/index.js",
     "dev": "nodemon --exec ts-node index.ts",
     "test": "vitest run"
   },

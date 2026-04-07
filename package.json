@@ -1,0 +1,17 @@
+{
+  "name": "neon-district-racing",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && npm install --prefix client && npm install --prefix server",
+    "build:client": "npm run build --prefix client",
+    "build:server": "npm run build --prefix server",
+    "build": "npm run build:client && npm run build:server",
+    "start": "npm run start --prefix server",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "test:client": "npm run test --prefix client",
+    "test:server": "npm run test --prefix server",
+    "test": "npm run test:client && npm run test:server"
+  }
+}

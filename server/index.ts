@@ -41,7 +41,11 @@ app.use(cors());
 app.use(express.json());
 
 // 静态文件：服务前端 dist
-const DIST_PATH = path.join(__dirname, '../client/dist');
+// 处理开发环境 (ts-node) 和生产环境 (node dist/index.js) 的路径差异
+const DIST_PATH = process.env.NODE_ENV === 'production'
+  ? path.join(__dirname, '../../client/dist') // 在 dist/index.js 中，对应 server/dist/../../client/dist
+  : path.join(__dirname, '../client/dist');     // 在 index.ts 中，对应 server/../client/dist
+
 app.use(express.static(DIST_PATH));
 
 // 健康检查接口
@@ -50,7 +54,8 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 // 所有非 API 路由返回 index.html（SPA 路由支持）
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/socket.io') && !req.path.startsWith('/health')) {
-    res.sendFile(path.join(DIST_PATH, 'index.html'));
+    const indexPath = path.join(DIST_PATH, 'index.html');
+    res.sendFile(indexPath);
   }
 });
 

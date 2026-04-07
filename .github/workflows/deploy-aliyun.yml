@@ -1,0 +1,44 @@
+name: Deploy to Alibaba Cloud SAE
+
+on:
+  push:
+    branches:
+      - main  # 仅在推送至 main 分支时触发
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. 登录阿里云 Docker 镜像仓库 (ACR)
+      - name: Login to ACR
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      # 2. 构建并推送镜像
+      - name: Build and Push Docker Image
+        run: |
+          IMAGE_TAG="registry.cn-hangzhou.aliyuncs.com/${{ secrets.ACR_NAMESPACE }}/speed-racing:${{ github.sha }}"
+          docker build -t $IMAGE_TAG .
+          docker push $IMAGE_TAG
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      # 3. 设置阿里云 CLI
+      - name: Set up Aliyun CLI
+        uses: aliyun/setup-aliyun-cli-action@v1
+        with:
+          access-key-id: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+          region: 'cn-hangzhou' # 请根据实际地域修改
+
+      # 4. 部署/更新阿里云 SAE 应用
+      - name: Deploy to SAE
+        run: |
+          aliyun sae UpdateApplication \
+            --AppId ${{ secrets.SAE_APP_ID }} \
+            --ImageUrl ${{ env.IMAGE_TAG }}
