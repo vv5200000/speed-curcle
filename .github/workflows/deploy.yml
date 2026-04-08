@@ -1,0 +1,28 @@
+  name: Deploy to Aliyun ECS                                              
+                                                                          
+  on:                                                                     
+    push:                                                                 
+      branches: [ main, master ]
+
+  jobs:
+    deploy:
+      runs-on: ubuntu-latest
+
+      steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to ECS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /root/speed-curcle
+            git pull origin main || git pull origin master
+            docker stop speed-game || true
+            docker rm speed-game || true
+            docker rmi speed-curcle || true
+            docker build -t speed-curcle .
+            docker run -d --name speed-game -p 3001:3001 --restart always speed-curcle
