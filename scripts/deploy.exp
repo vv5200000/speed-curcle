@@ -1,0 +1,124 @@
+#!/usr/bin/expect -f
+
+set timeout 1800
+set SERVER "root@121.43.244.230"
+set PASSWORD "0vV3156958@"
+
+spawn ssh -o StrictHostKeyChecking=no $SERVER
+expect {
+    "password:" { send "$PASSWORD\r" }
+    "Permission denied" { puts "密码错误"; exit 1 }
+    timeout { puts "连接超时"; exit 1 }
+}
+
+expect "# "
+
+send "apt-get update -y\r"
+expect "# "
+
+send "apt-get install -y ca-certificates curl gnupg lsb-release\r"
+expect "# "
+
+send "mkdir -p /etc/apt/keyrings\r"
+expect "# "
+
+send "curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg\r"
+expect "# "
+
+send "echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $(lsb_release -cs) stable\" | tee /etc/apt/sources.list.d/docker.list > /dev/null\r"
+expect "# "
+
+send "apt-get update -y\r"
+expect "# "
+
+send "apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin\r"
+expect "# "
+
+send "systemctl start docker\r"
+expect "# "
+
+send "systemctl enable docker\r"
+expect "# "
+
+send "mkdir -p /etc/docker\r"
+expect "# "
+
+send "cat > /etc/docker/daemon.json << 'EOF'\r"
+send "{\r"
+send "  \"registry-mirrors\": [\r"
+send "    \"https://registry.cn-hangzhou.aliyuncs.com\",\r"
+send "    \"https://docker.mirrors.ustc.edu.cn\"\r"
+send "  ]\r"
+send "}\r"
+send "EOF\r"
+expect "# "
+
+send "systemctl daemon-reload\r"
+expect "# "
+
+send "systemctl restart docker\r"
+expect "# "
+
+send "cd /opt\r"
+expect "# "
+
+send "rm -rf speed-curcle\r"
+expect "# "
+
+send "git clone https://github.com/vv5200000/speed-curcle.git\r"
+expect "# "
+
+send "cd speed-curcle\r"
+expect "# "
+
+send "cat > docker-compose.yml << 'EOF'\r"
+send "services:\r"
+send "  speed-curcle:\r"
+send "    build: .\r"
+send "    container_name: speed-curcle-game\r"
+send "    restart: unless-stopped\r"
+send "    ports:\r"
+send "      - \"80:3001\"\r"
+send "    environment:\r"
+send "      - NODE_ENV=production\r"
+send "      - PORT=3001\r"
+send "EOF\r"
+expect "# "
+
+send "echo '开始构建 Docker 镜像，这需要 5-10 分钟...'\r"
+expect "# "
+
+send "docker compose up -d --build\r"
+expect "# "
+
+send "echo '等待服务启动...'\r"
+expect "# "
+
+send "sleep 40\r"
+expect "# "
+
+send "docker compose ps\r"
+expect "# "
+
+send "echo '检查服务状态...'\r"
+expect "# "
+
+send "for i in {1..10}; do\r"
+send "    if curl -s http://localhost/health > /dev/null; then\r"
+send "        echo '✅ 服务启动成功！'\r"
+send "        echo ''\r"
+send "        echo '========== 部署完成 =========='\r"
+send "        echo '🎮 访问游戏: http://121.43.244.230'\r"
+send "        echo '📋 查看日志: cd /opt/speed-curcle && docker compose logs -f'\r"
+send "        echo '==============================='\r"
+send "        break\r"
+send "    fi\r"
+send "    echo \"等待服务就绪... $i/10\"\r"
+send "    sleep 10\r"
+send "done\r"
+expect "# "
+
+send "echo '脚本执行完成！'\r"
+expect "# "
+
+interact

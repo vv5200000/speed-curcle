@@ -1,0 +1,46 @@
+#!/usr/bin/expect -f
+
+set timeout 600
+set SERVER "root@121.43.244.230"
+set PASSWORD "0vV3156958@"
+set SCRIPT "/Users/wanglipeng/speed-curcle/scripts/server-deploy.sh"
+
+puts "📤 上传部署脚本到服务器..."
+
+spawn scp -o StrictHostKeyChecking=no $SCRIPT $SERVER:/tmp/deploy.sh
+expect {
+    "password:" { send "$PASSWORD\r" }
+    eof
+}
+
+puts "🚀 开始在服务器上执行部署..."
+puts "⏱️  整个过程大约需要 10-15 分钟，请耐心等待...\n"
+
+spawn ssh -o StrictHostKeyChecking=no $SERVER
+expect {
+    "password:" { send "$PASSWORD\r" }
+}
+expect "# "
+
+send "chmod +x /tmp/deploy.sh\r"
+expect "# "
+
+send "bash /tmp/deploy.sh 2>&1\r"
+
+expect {
+    "================================" {
+        puts "\n✅ 部署成功完成！"
+    }
+    timeout {
+        puts "\n⚠️  脚本执行超时，但可能仍在进行中"
+        puts "请手动 SSH 连接查看状态"
+    }
+    eof {
+        puts "\n脚本执行结束"
+    }
+}
+
+puts "\n📋 手动管理命令："
+puts "  SSH 连接: ssh root@121.43.244.230"
+puts "  查看日志: cd /opt/speed-curcle && docker compose logs -f"
+puts "  访问游戏: http://121.43.244.230"

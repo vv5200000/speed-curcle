@@ -1,0 +1,76 @@
+#!/usr/bin/expect -f
+
+set timeout 3600
+set SERVER "root@121.43.244.230"
+set PASSWORD "0vV3156958@"
+
+puts "连接到服务器..."
+
+spawn ssh -o StrictHostKeyChecking=no $SERVER
+expect {
+    "password:" { send "$PASSWORD\r" }
+}
+expect "# "
+
+puts "创建部署脚本..."
+
+send "cat > /tmp/deploy.sh << 'EOF'\r"
+send "#!/bin/bash\r"
+send "set -e\r"
+send "echo '========== 开始部署 =========='\r"
+send "apt-get update -y\r"
+send "apt-get install -y ca-certificates curl gnupg lsb-release\r"
+send "mkdir -p /etc/apt/keyrings\r"
+send "curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg\r"
+send "echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $(lsb_release -cs) stable\" | tee /etc/apt/sources.list.d/docker.list > /dev/null\r"
+send "apt-get update -y\r"
+send "apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin\r"
+send "systemctl start docker\r"
+send "systemctl enable docker\r"
+send "mkdir -p /etc/docker\r"
+send "cat > /etc/docker/daemon.json << 'INNER'\r"
+send "{\r"
+send "  \"registry-mirrors\": [\"https://registry.cn-hangzhou.aliyuncs.com\", \"https://docker.mirrors.ustc.edu.cn\"]\r"
+send "}\r"
+send "INNER\r"
+send "systemctl daemon-reload\r"
+send "systemctl restart docker\r"
+send "cd /opt\r"
+send "rm -rf speed-curcle\r"
+send "git clone https://github.com/vv5200000/speed-curcle.git\r"
+send "cd speed-curcle\r"
+send "cat > docker-compose.yml << 'INNER'\r"
+send "services:\r"
+send "  speed-curcle:\r"
+send "    build: .\r"
+send "    container_name: speed-curcle-game\r"
+send "    restart: unless-stopped\r"
+send "    ports:\r"
+send "      - \"80:3001\"\r"
+send "    environment:\r"
+send "      - NODE_ENV=production\r"
+send "      - PORT=3001\r"
+send "INNER\r"
+send "echo '开始构建（需要 5-10 分钟）...'\r"
+send "docker compose up -d --build\r"
+send "echo '等待启动...'\r"
+send "sleep 40\r"
+send "docker compose ps\r"
+send "for i in {1..15}; do\r"
+send "    if curl -s http://localhost/health > /dev/null; then\r"
+send "        echo '✅ 部署成功！'\r"
+send "        echo '访问: http://121.43.244.230'\r"
+send "        break\r"
+send "    fi\r"
+send "    echo \"等待... $i/15\"\r"
+send "    sleep 10\r"
+send "done\r"
+send "EOF\r"
+expect "# "
+
+send "chmod +x /tmp/deploy.sh\r"
+expect "# "
+
+send "bash /tmp/deploy.sh\r"
+
+interact
