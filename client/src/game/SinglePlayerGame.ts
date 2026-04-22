@@ -35,8 +35,8 @@ const TRACK: TrackCell[] = [
 
 const TRACK_LENGTH = TRACK.length;
 const TOTAL_LAPS = 3;
-const HAND_LIMIT = 5;   // Phase 5: 手牌上限（含热力卡）
-const INIT_HAND_SIZE = 3; // 初始发牌数
+const HAND_LIMIT = 7;   // Heat 标准：手牌上限为 7
+const INIT_HAND_SIZE = 7; // 初始发牌数为 7
 
 // 卡牌类型定义
 export type CardType = 'move' | 'boost' | 'shield' | 'slow' | 'shortcut' | 'heat' | 'cooldown' | 'attack' | 'counter';
@@ -272,16 +272,9 @@ export class SinglePlayerGame {
     return { ok: false, error: '不是你的回合' };
   }
 
-  // AI 移动
+  // AI 移动 (已禁用：现在必须由卡牌驱动)
   aiMove(): { ok: boolean; error?: string } {
-    const player = this.getCurrentPlayer();
-    if (!player || !player.isAI) {
-      return { ok: false, error: '不是AI回合' };
-    }
-
-    // 简单 AI：随机 1-6 步
-    const steps = Math.floor(Math.random() * 6) + 1;
-    return this._movePlayer(player.id, steps);
+    return { ok: false, error: 'AI 必须通过打牌移动' };
   }
 
   _movePlayer(playerId: string, steps: number): { ok: boolean; error?: string; lapCompleted?: boolean; finished?: boolean; slipstream?: boolean } {
@@ -561,16 +554,19 @@ export class SinglePlayerGame {
         if (result.ok) return result;
       }
 
-      // 策略6：普通移动（随机选一张移动卡）
-      if (moveCards.length > 0 && Math.random() < 0.5) {
-        const card = moveCards[Math.floor(Math.random() * moveCards.length)];
-        const result = this._playCard(player.id, card.id);
-        if (result.ok) return result;
+      // 策略6：普通移动（尝试打出所有可能的移动卡，直到行动点耗尽）
+      while (player.actionPoints > 0) {
+        const currentMoveCards = player.hand.filter(c => c.type === 'move');
+        if (currentMoveCards.length > 0) {
+          const card = currentMoveCards[0];
+          this._playCard(player.id, card.id);
+        } else {
+          break;
+        }
       }
     }
 
-    // 默认：骰子移动
-    return this.aiMove();
+    return { ok: true };
   }
 
   _playCard(playerId: string, cardId: string, targetId?: string): { ok: boolean; error?: string; effect?: any } {
@@ -777,11 +773,14 @@ export class SinglePlayerGame {
         next.bodyWeightMarkers = 3;
       }
 
-      // 补牌（上限 HAND_LIMIT）
-      if (next.hand.length < HAND_LIMIT) {
+      // 还原 Heat 机制：每回合结束/开始时，将手牌补满至上限
+      while (next.hand.length < HAND_LIMIT) {
         const drawn = this.deck.draw();
         if (drawn) next.hand.push(drawn);
+        else break;
       }
+
+
     }
 
     this._notify();

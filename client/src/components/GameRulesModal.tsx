@@ -73,16 +73,20 @@ const GameRulesModal: React.FC<GameRulesModalProps> = ({ isOpen, onClose }) => {
             </h3>
             <ul className="space-y-3 bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
               <li className="flex gap-2">
-                <span className="text-green-300">⚡</span>
-                <span><strong>行动机制：</strong> 轮到你的回合时，你需要选择：是 <strong>掷骰子随机移动</strong>，还是 <strong>打出一张手牌</strong>。</span>
+                <span className="text-green-300">⚙️</span>
+                <span><strong>档位机制：</strong> 你的档位决定了你本回合可以打出的卡牌数量。档位越高，速度越快。</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-green-300">🃏</span>
+                <span><strong>行动机制：</strong> 轮到你的回合时，你需要通过打出手牌来在赛道上前进。</span>
               </li>
               <li className="flex gap-2">
                 <span className="text-green-300">⏳</span>
                 <span><strong>时间限制：</strong> 每回合有 60 秒倒计时，如果不做选择，超时将自动结束回合。</span>
               </li>
               <li className="flex gap-2">
-                <span className="text-green-300">🃏</span>
-                <span><strong>补牌规则：</strong> 回合结束时如果手牌未满，会自动补充手牌。每次经过终点线（跑完一圈）不仅圈数+1，还会额外奖励手牌！</span>
+                <span className="text-green-300">🔋</span>
+                <span><strong>补牌规则：</strong> 回合结束时会自动补充手牌。每次经过终点线（跑完一圈）不仅圈数+1，还会额外奖励手牌！</span>
               </li>
             </ul>
           </section>

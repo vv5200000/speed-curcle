@@ -13,8 +13,8 @@ export interface Card {
   [key: string]: any;
 }
 
-/** 手牌上限（含热力卡） */
-export const HAND_LIMIT = 5;
+/** 手牌上限（Heat 标准通常为 7） */
+export const HAND_LIMIT = 7;
 
 export default class Player {
   id: string;

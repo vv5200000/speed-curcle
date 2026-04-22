@@ -29,8 +29,8 @@ export type CardType = 'move' | 'boost' | 'shield' | 'slow' | 'shortcut' | 'heat
 /** 卡牌稀有度 */
 export type CardRarity = 'N' | 'R' | 'S' | 'L';
 
-/** 手牌上限（含热力卡） */
-export const HAND_SIZE = 5;
+/** 手牌上限（Heat 标准通常为 7） */
+export const HAND_SIZE = 7;
 
 /** 卡牌对象 */
 export interface Card {

@@ -582,10 +582,11 @@ export class GameRoom {
     const next   = this.players.get(nextId);
     if (next) {
       next.resetTurn();
-      // 每回合开始时补抽一张普通牌（如果手牌 < HAND_LIMIT）
-      if (next.hand.length < HAND_LIMIT) {
-        const drawn = this.deck.draw();
+      // 还原 Heat 机制：每回合结束/开始时，将手牌补满至上限
+      while (next.hand.length < HAND_LIMIT) {
+        const drawn = this.deck!.draw();
         if (drawn) next.addCard(drawn);
+        else break;
       }
     }
 

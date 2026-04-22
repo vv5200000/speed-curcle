@@ -211,6 +211,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  /*
   // ── 玩家移动 ────────────────────────────────────
   socket.on('player-move', ({ steps }, cb) => {
     try {
@@ -243,6 +244,7 @@ io.on('connection', (socket) => {
       cb?.({ ok: false, error: '服务器内部错误' });
     }
   });
+  */
 
   // ── 打出卡牌 ────────────────────────────────────
   socket.on('play-card', ({ cardId, targetId }, cb) => {

@@ -43,7 +43,6 @@ const RARITY_GLOW: Record<string, string> = {
   L: '0 0 14px #facc1580',
 };
 
-const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 const TURN_TIMEOUT = 60; // 秒
 
 const CardHand: React.FC = () => {
@@ -84,11 +83,6 @@ const CardHand: React.FC = () => {
   const [targetSelectVisible, setTargetSelectVisible] = useState(false);
   const [feedback,            setFeedback]            = useState<string>('');
   const [feedbackColor,       setFeedbackColor]       = useState<string>('text-cyan-300');
-
-  // 骰子动画
-  const [diceRolling, setDiceRolling] = useState(false);
-  const [diceValue,   setDiceValue]   = useState(1);
-  const diceAnimRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 倒计时
   const [countdown,  setCountdown]  = useState(TURN_TIMEOUT);
@@ -178,27 +172,6 @@ const CardHand: React.FC = () => {
     }
     setPendingCard(null);
   };
-
-  // ── 骰子移动（带动画） ──
-  const handleDiceMove = useCallback(() => {
-    if (!canAct || diceRolling) return;
-
-    setDiceRolling(true);
-    let tick = 0;
-
-    diceAnimRef.current = setInterval(() => {
-      setDiceValue(Math.floor(Math.random() * 6) + 1);
-      tick++;
-      if (tick >= 10) {
-        clearInterval(diceAnimRef.current!);
-        const finalSteps = Math.floor(Math.random() * 6) + 1;
-        setDiceValue(finalSteps);
-        setDiceRolling(false);
-        movePlayerAction(finalSteps);
-        showFeedback(`🎲 掷出 ${finalSteps}！前进 ${finalSteps} 格`, 'text-purple-300');
-      }
-    }, 80);
-  }, [canAct, diceRolling, movePlayerAction]);
 
   const handleEndTurn = () => {
     if (!isMyTurn) return;
@@ -439,25 +412,10 @@ const CardHand: React.FC = () => {
           )}
 
           <div className="flex gap-2 mt-1">
-            {/* 骰子按钮 */}
-          <button
-            onClick={handleDiceMove}
-            disabled={!canAct || diceRolling}
-            className="flex-1 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 text-white text-sm font-bold py-2 rounded-lg transition flex items-center justify-center gap-1.5"
-          >
-            <span
-              className={`text-lg leading-none ${diceRolling ? 'animate-spin' : ''}`}
-              style={{ display: 'inline-block' }}
-            >
-              {DICE_FACES[diceValue - 1]}
-            </span>
-            <span>{diceRolling ? '掷骰中...' : '掷骰子'}</span>
-          </button>
-
           {/* 结束回合 */}
           <button
             onClick={handleEndTurn}
-            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-2 rounded-lg transition"
+            className="w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-2 rounded-lg transition"
           >
             ⏭ 结束回合
           </button>

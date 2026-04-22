@@ -99,6 +99,7 @@ export function useSinglePlayer(): UseSinglePlayer {
     addMessage('已退出单人模式');
   }, [reset, addMessage, setIsSinglePlayer]);
 
+  /*
   // 人类玩家移动
   const movePlayer = useCallback((steps: number) => {
     if (!globalGameInstance) return;
@@ -117,6 +118,7 @@ export function useSinglePlayer(): UseSinglePlayer {
     }
     syncState();
   }, [addMessage, syncState]);
+  */
 
   // 人类玩家打牌
   const playCard = useCallback((cardId: string, targetId?: string) => {
@@ -278,7 +280,7 @@ export function useSinglePlayer(): UseSinglePlayer {
     setAiCount,
     startSinglePlayer,
     endSinglePlayer,
-    movePlayer,
+    // movePlayer, // 已禁用
     playCard,
     endTurn,
     changeGear,
